@@ -66,7 +66,7 @@ export default function App() {
       <div className="relative h-full">
         <button
           onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
-          className="fixed top-3 end-3 z-20 text-xs font-bold text-muted hover:text-gold-electric transition border border-white/10 rounded-full px-3 py-1 backdrop-blur"
+          className="fixed safe-top-lg end-3 z-20 text-xs font-bold text-muted hover:text-gold-electric transition border border-white/10 rounded-full px-3 py-1 backdrop-blur"
         >
           {lang === 'ar' ? 'EN' : 'ع'}
         </button>

@@ -27,7 +27,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-full flex items-center justify-center p-4">
+    <div className="min-h-full flex items-center justify-center p-4 safe-screen-pad">
       <div className="w-full max-w-sm space-y-6 fade-in">
         <Logo />
         <GlassCard className="space-y-4">

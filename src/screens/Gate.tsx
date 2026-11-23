@@ -22,7 +22,7 @@ export default function Gate() {
   }
   if (state === 'error') {
     return (
-      <div className="h-full flex items-center justify-center p-4">
+      <div className="h-full flex items-center justify-center p-4 safe-screen-pad">
         <GlassCard className="w-full max-w-sm text-center space-y-4">
           <p className="text-sm text-muted">{t('connectionError')}</p>
           <GoldButton onClick={() => { setState('loading'); setAttempt(a => a + 1) }}>{t('tryAgain')}</GoldButton>

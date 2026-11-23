@@ -56,7 +56,7 @@ export default function Home() {
 
   return (
     <div className="min-h-full flex flex-col">
-      <header className="sticky top-2 z-10 max-w-2xl mx-auto w-[calc(100%-1.5rem)] rounded-[22px] border border-white/10 shadow-glass"
+      <header className="sticky safe-top-header z-10 max-w-2xl mx-auto w-[calc(100%-1.5rem)] rounded-[22px] border border-white/10 shadow-glass"
         style={{ background: 'linear-gradient(150deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))', backdropFilter: 'blur(22px) saturate(160%)', WebkitBackdropFilter: 'blur(22px) saturate(160%)' }}>
         <div className="px-4 py-3 flex items-center gap-3">
           <button
@@ -85,7 +85,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main key={location.pathname} className="flex-1 w-full max-w-2xl mx-auto p-4 fade-in">
+      <main key={location.pathname} className="flex-1 w-full max-w-2xl mx-auto p-4 safe-main-pad fade-in">
         <Outlet />
       </main>
 
@@ -93,7 +93,7 @@ export default function Home() {
         <div className="fixed inset-0 z-30">
           <button aria-label={t('close')} onClick={() => setMenuOpen(false)}
             className="absolute inset-0 bg-obsidian/60 backdrop-blur-sm cursor-default drawer-veil" />
-          <div className="drawer-panel absolute inset-y-0 start-0 w-72 max-w-[85vw] border-e border-white/10 flex flex-col"
+          <div className="drawer-panel absolute inset-y-0 start-0 w-72 max-w-[85vw] border-e border-white/10 flex flex-col safe-drawer-pad"
             style={{ background: 'linear-gradient(165deg, rgba(30,38,68,0.88), rgba(11,15,30,0.92))', backdropFilter: 'blur(28px) saturate(170%)', WebkitBackdropFilter: 'blur(28px) saturate(170%)', boxShadow: '0 0 60px rgba(2,6,23,0.6)' }}>
             <div className="p-4 flex items-center justify-between border-b border-gold/10">
               <Logo size="sm" />

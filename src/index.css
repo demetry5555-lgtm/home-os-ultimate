@@ -10,7 +10,16 @@
   --gold-electric: #FFDD8F;
   --ivory: #F7F5EF;
   --muted: #9BA3B4;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
 }
+
+/* notch / status-bar safety */
+.safe-top-lg { top: calc(0.75rem + var(--sat)); }
+.safe-top-header { top: calc(0.5rem + var(--sat)); }
+.safe-drawer-pad { padding-top: var(--sat); padding-bottom: var(--sab); }
+.safe-main-pad { padding-bottom: calc(1rem + var(--sab)); }
+.safe-screen-pad { padding-top: var(--sat); padding-bottom: var(--sab); }
 
 html, body, #root { height: 100%; }
 body {

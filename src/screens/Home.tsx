@@ -56,8 +56,8 @@ export default function Home() {
 
   return (
     <div className="min-h-full flex flex-col">
-      <header className="sticky safe-top-header z-10 max-w-2xl mx-auto w-[calc(100%-1.5rem)] rounded-[22px] border border-white/10 shadow-glass"
-        style={{ background: 'linear-gradient(150deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))', backdropFilter: 'blur(22px) saturate(160%)', WebkitBackdropFilter: 'blur(22px) saturate(160%)' }}>
+      <header className="fixed safe-top-header inset-x-0 z-20 max-w-2xl mx-auto w-[calc(100%-1.5rem)] rounded-[22px] border border-white/10 shadow-glass"
+        style={{ background: 'linear-gradient(150deg, rgba(26,33,60,0.94), rgba(13,18,38,0.96))', backdropFilter: 'blur(22px) saturate(160%)', WebkitBackdropFilter: 'blur(22px) saturate(160%)' }}>
         <div className="px-4 py-3 flex items-center gap-3">
           <button
             onClick={() => setMenuOpen(true)}
@@ -85,7 +85,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main key={location.pathname} className="flex-1 w-full max-w-2xl mx-auto p-4 safe-main-pad fade-in">
+      <main key={location.pathname} className="flex-1 w-full max-w-2xl mx-auto p-4 safe-main-pad safe-main-toppad fade-in">
         <Outlet />
       </main>
 

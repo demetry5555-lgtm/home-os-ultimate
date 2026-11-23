@@ -19,6 +19,7 @@
 .safe-top-header { top: calc(0.5rem + var(--sat)); }
 .safe-drawer-pad { padding-top: var(--sat); padding-bottom: var(--sab); }
 .safe-main-pad { padding-bottom: calc(1rem + var(--sab)); }
+.safe-main-toppad { padding-top: calc(4.75rem + var(--sat)); }
 .safe-screen-pad { padding-top: var(--sat); padding-bottom: var(--sab); }
 
 html, body, #root { height: 100%; }

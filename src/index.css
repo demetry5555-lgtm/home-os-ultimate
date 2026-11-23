@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #08090D;
+  --surface: #12141B;
+  --gold: #D6B56D;
+  --gold-soft: #F1DDAA;
+  --gold-electric: #FFD36A;
+  --ivory: #F8F6F0;
+  --muted: #A8A8AD;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ivory);
+  font-family: 'Cairo', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Electric gold veins drifting across the background */
+.electric-bg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(214,181,109,0.12), transparent 60%),
+    radial-gradient(900px 500px at 10% 110%, rgba(255,211,106,0.08), transparent 60%),
+    var(--bg);
+}
+.electric-bg::before,
+.electric-bg::after {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background:
+    linear-gradient(115deg, transparent 48.6%, rgba(255,211,106,0.20) 49%, rgba(214,181,109,0.05) 50%, transparent 50.6%),
+    linear-gradient(65deg,  transparent 62%,   rgba(241,221,170,0.14) 62.4%, transparent 63%),
+    linear-gradient(150deg, transparent 30%,   rgba(255,211,106,0.10) 30.3%, transparent 30.8%);
+  filter: drop-shadow(0 0 6px rgba(255,211,106,0.35));
+  animation: veinDrift 26s linear infinite;
+  pointer-events: none;
+}
+.electric-bg::after {
+  animation-duration: 41s;
+  animation-direction: reverse;
+  opacity: 0.55;
+}
+@keyframes veinDrift {
+  from { transform: translate3d(-3%, -2%, 0) rotate(0.001deg); }
+  50%  { transform: translate3d(3%, 2%, 0)  rotate(0.001deg); }
+  to   { transform: translate3d(-3%, -2%, 0) rotate(0.001deg); }
+}
+
+@layer components {
+  .glass {
+    @apply bg-surface/60 backdrop-blur-xl border border-gold/15 rounded-3xl shadow-glass;
+  }
+  .glass-inner {
+    @apply bg-white/[0.03] border border-white/[0.06] rounded-2xl;
+  }
+  .gold-text {
+    background: linear-gradient(120deg, #F1DDAA, #FFD36A 45%, #D6B56D);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .btn-gold {
+    @apply relative overflow-hidden rounded-2xl px-5 py-3 font-bold text-obsidian transition
+      active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none;
+    background: linear-gradient(120deg, #F1DDAA, #FFD36A 55%, #D6B56D);
+    box-shadow: 0 4px 24px rgba(255,211,106,0.25);
+  }
+  .btn-gold:hover { box-shadow: 0 6px 32px rgba(255,211,106,0.45); }
+  .btn-ghost {
+    @apply rounded-2xl px-5 py-3 font-semibold text-gold-soft border border-gold/25
+      hover:border-gold/60 hover:bg-gold/5 transition active:scale-[0.98];
+  }
+  .input-glass {
+    @apply w-full rounded-2xl bg-white/[0.04] border border-white/10 px-4 py-3 text-ivory
+      placeholder:text-muted/60 outline-none transition
+      focus:border-gold-electric/60 focus:ring-2 focus:ring-gold-electric/20;
+  }
+  .label-glass { @apply block text-sm font-semibold text-muted mb-1.5; }
+}
+
+/* Splash veil */
+.splash-veil {
+  animation: splashGlow 2.4s ease-in-out infinite;
+}
+@keyframes splashGlow {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.04); }
+}
+.fade-in { animation: fadeIn 0.5s ease both; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* direction-aware back arrow */
+.back-arrow { display: inline-block; }
+[dir='rtl'] .back-arrow { transform: scaleX(-1); }

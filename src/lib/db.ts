@@ -83,6 +83,9 @@ interface DemoStore {
   salaries: DemoSalary[]
   salaryPayments: DemoSalaryPayment[]
   budgets: DemoBudget[]
+  goals?: import('./db').FamilyGoal[]
+  goalProgress?: import('./db').GoalProgress[]
+  checkins?: import('./db').DailyCheckin[]
 }
 
 const KEY = 'homeos.demo.v1'
@@ -400,4 +403,219 @@ export async function updateFamilySettings(input: FamilySettings): Promise<void>
   s.familyCurrency = input.currency
   s.familyDefaultLanguage = input.defaultLanguage
   save(s)
+}
+
+// ============ FAMILY GOALS + DAILY CHECK-INS (stage 7) ============
+
+export type Mood = 'great' | 'good' | 'okay' | 'tired' | 'stressed' | 'sad'
+
+export interface FamilyGoal {
+  id: string
+  family_id: string
+  title: string
+  unit: string
+  target_value: number
+  deadline: string | null
+  status: 'active' | 'achieved' | 'archived'
+  created_by: string
+  created_at: string
+}
+export interface GoalProgress {
+  id: string
+  goal_id: string
+  member_id: string
+  amount: number
+  note: string
+  created_at: string
+}
+export interface GoalWithProgress extends FamilyGoal {
+  total: number
+  entries: (GoalProgress & { member_name: string })[]
+}
+export interface DailyCheckin {
+  id: string
+  family_id: string
+  member_id: string
+  checkin_date: string
+  mood: Mood
+  note: string
+  created_at: string
+  updated_at: string
+}
+export interface CheckinWithName extends DailyCheckin { member_name: string }
+
+function todayStr(): string { return new Date().toISOString().slice(0, 10) }
+
+export async function listGoals(): Promise<GoalWithProgress[]> {
+  if (isCloud && supabase) {
+    const { data: goals, error } = await supabase.from('family_goals').select('*').order('created_at', { ascending: false })
+    if (error) throw new Error(error.message)
+    const { data: progress, error: e2 } = await supabase.from('goal_progress').select('*').order('created_at', { ascending: false })
+    if (e2) throw new Error(e2.message)
+    const members = await listMembers()
+    const nameOf = (id: string) => members.find(m => m.id === id)?.full_name ?? ''
+    return (goals as FamilyGoal[]).map(g => {
+      const entries = (progress as GoalProgress[]).filter(p => p.goal_id === g.id).map(p => ({ ...p, member_name: nameOf(p.member_id) }))
+      return { ...g, entries, total: entries.reduce((a, p) => a + Number(p.amount), 0) }
+    })
+  }
+  const s = load()
+  const me = s.profiles.find(p => p.id === s.session?.userId)
+  if (!me) return []
+  const nameOf = (id: string) => s.profiles.find(p => p.id === id)?.full_name ?? ''
+  return (s.goals ?? [])
+    .filter(g => g.family_id === me.family_id)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .map(g => {
+      const entries = (s.goalProgress ?? []).filter(p => p.goal_id === g.id)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .map(p => ({ ...p, member_name: nameOf(p.member_id) }))
+      return { ...g, entries, total: entries.reduce((a, p) => a + p.amount, 0) }
+    })
+}
+
+export async function createGoal(input: { title: string; unit: string; target: number; deadline: string | null }): Promise<void> {
+  if (isCloud && supabase) {
+    const me = await getMyProfileStrict()
+    if (!me) throw new Error('no profile')
+    const { error } = await supabase.from('family_goals').insert({
+      family_id: me.family_id, title: input.title, unit: input.unit,
+      target_value: input.target, deadline: input.deadline, created_by: me.id,
+    })
+    if (error) throw new Error(error.message)
+    return
+  }
+  const s = load()
+  const me = s.profiles.find(p => p.id === s.session?.userId)
+  if (!me) throw new Error('not authenticated')
+  s.goals = s.goals ?? []
+  s.goals.push({
+    id: uid(), family_id: me.family_id!, title: input.title, unit: input.unit,
+    target_value: input.target, deadline: input.deadline, status: 'active',
+    created_by: me.id, created_at: new Date().toISOString(),
+  })
+  save(s)
+}
+
+export async function addGoalProgress(goalId: string, amount: number, note: string): Promise<void> {
+  if (isCloud && supabase) {
+    const me = await getMyProfileStrict()
+    if (!me) throw new Error('no profile')
+    const { error } = await supabase.from('goal_progress').insert({ goal_id: goalId, member_id: me.id, amount, note })
+    if (error) throw new Error(error.message)
+    return
+  }
+  const s = load()
+  const me = s.profiles.find(p => p.id === s.session?.userId)
+  if (!me) throw new Error('not authenticated')
+  s.goalProgress = s.goalProgress ?? []
+  s.goalProgress.push({ id: uid(), goal_id: goalId, member_id: me.id, amount, note, created_at: new Date().toISOString() })
+  // mirror goal_mark_achieved trigger
+  const goal = (s.goals ?? []).find(g => g.id === goalId)
+  if (goal && goal.status === 'active') {
+    const total = s.goalProgress.filter(p => p.goal_id === goalId).reduce((a, p) => a + p.amount, 0)
+    if (total >= goal.target_value) goal.status = 'achieved'
+  }
+  save(s)
+}
+
+export async function deleteGoal(goalId: string): Promise<void> {
+  if (isCloud && supabase) {
+    const { error } = await supabase.from('family_goals').delete().eq('id', goalId)
+    if (error) throw new Error(error.message)
+    return
+  }
+  const s = load()
+  const me = s.profiles.find(p => p.id === s.session?.userId)
+  const goal = (s.goals ?? []).find(g => g.id === goalId)
+  if (!me || !goal) return
+  if (goal.created_by !== me.id && me.role !== 'owner') throw new Error('not allowed')
+  s.goals = (s.goals ?? []).filter(g => g.id !== goalId)
+  s.goalProgress = (s.goalProgress ?? []).filter(p => p.goal_id !== goalId)
+  save(s)
+}
+
+export async function myCheckinToday(): Promise<DailyCheckin | null> {
+  if (isCloud && supabase) {
+    const me = await getMyProfileStrict()
+    if (!me) return null
+    const { data, error } = await supabase.from('daily_checkins').select('*')
+      .eq('member_id', me.id).eq('checkin_date', todayStr()).maybeSingle()
+    if (error) throw new Error(error.message)
+    return (data as DailyCheckin) ?? null
+  }
+  const s = load()
+  const me = s.profiles.find(p => p.id === s.session?.userId)
+  if (!me) return null
+  return (s.checkins ?? []).find(c => c.member_id === me.id && c.checkin_date === todayStr()) ?? null
+}
+
+export async function upsertCheckin(mood: Mood, note: string): Promise<void> {
+  if (isCloud && supabase) {
+    const me = await getMyProfileStrict()
+    if (!me) throw new Error('no profile')
+    const { error } = await supabase.from('daily_checkins').upsert({
+      family_id: me.family_id, member_id: me.id, checkin_date: todayStr(),
+      mood, note, updated_at: new Date().toISOString(),
+    }, { onConflict: 'family_id,member_id,checkin_date' })
+    if (error) throw new Error(error.message)
+    return
+  }
+  const s = load()
+  const me = s.profiles.find(p => p.id === s.session?.userId)
+  if (!me) throw new Error('not authenticated')
+  s.checkins = s.checkins ?? []
+  const existing = s.checkins.find(c => c.member_id === me.id && c.checkin_date === todayStr())
+  if (existing) {
+    existing.mood = mood; existing.note = note; existing.updated_at = new Date().toISOString()
+  } else {
+    s.checkins.push({
+      id: uid(), family_id: me.family_id!, member_id: me.id, checkin_date: todayStr(),
+      mood, note, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    })
+  }
+  save(s)
+}
+
+export async function listTodayCheckins(): Promise<CheckinWithName[]> {
+  const members = await listMembers()
+  const nameOf = (id: string) => members.find(m => m.id === id)?.full_name ?? ''
+  if (isCloud && supabase) {
+    const { data, error } = await supabase.from('daily_checkins').select('*')
+      .eq('checkin_date', todayStr()).order('created_at', { ascending: false })
+    if (error) throw new Error(error.message)
+    return (data as DailyCheckin[]).map(c => ({ ...c, member_name: nameOf(c.member_id) }))
+  }
+  const s = load()
+  const me = s.profiles.find(p => p.id === s.session?.userId)
+  if (!me) return []
+  return (s.checkins ?? [])
+    .filter(c => c.family_id === me.family_id && c.checkin_date === todayStr())
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .map(c => ({ ...c, member_name: nameOf(c.member_id) }))
+}
+
+// Consecutive days with a check-in, counting back from today (yesterday counts if today is not done yet).
+export async function myCheckinStreak(): Promise<number> {
+  const me = await getMyProfile()
+  if (!me) return 0
+  let dates: string[]
+  if (isCloud && supabase) {
+    const { data, error } = await supabase.from('daily_checkins').select('checkin_date')
+      .eq('member_id', me.id).order('checkin_date', { ascending: false }).limit(120)
+    if (error) return 0
+    dates = (data as { checkin_date: string }[]).map(r => r.checkin_date)
+  } else {
+    const s = load()
+    dates = (s.checkins ?? []).filter(c => c.member_id === me.id).map(c => c.checkin_date).sort().reverse()
+  }
+  const set = new Set(dates)
+  let streak = 0
+  let cursor = new Date()
+  if (!set.has(cursor.toISOString().slice(0, 10))) cursor = new Date(cursor.getTime() - 864e5)
+  while (set.has(cursor.toISOString().slice(0, 10))) {
+    streak++
+    cursor = new Date(cursor.getTime() - 864e5)
+  }
+  return streak
 }

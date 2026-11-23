@@ -11,6 +11,8 @@ import Home from './screens/Home'
 import Invitations from './screens/Invitations'
 import ProfilePage from './screens/Profile'
 import Dashboard from './screens/finance/Dashboard'
+import Goals from './screens/Goals'
+import CheckIn from './screens/CheckIn'
 import FinanceHub from './screens/finance/FinanceHub'
 import Accounts from './screens/finance/Accounts'
 import Transactions from './screens/finance/Transactions'
@@ -78,6 +80,8 @@ export default function App() {
               <Route path="/setup" element={<OwnerSetup />} />
               <Route path="/home" element={<Home />}>
                 <Route index element={<Dashboard />} />
+                <Route path="goals" element={<Goals />} />
+                <Route path="checkin" element={<CheckIn />} />
                 <Route path="invitations" element={<Invitations />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="finance" element={<FinanceHub />} />

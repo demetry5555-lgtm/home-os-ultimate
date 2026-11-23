@@ -8,6 +8,8 @@ import { unreadCount, NOTIFS_CHANGED } from '../lib/notifications'
 
 const NAV: { to: string; key: Key; end?: boolean }[] = [
   { to: '/home', key: 'dashboard', end: true },
+  { to: '/home/checkin', key: 'dailyCheckIn' },
+  { to: '/home/goals', key: 'goals' },
   { to: '/home/finance', key: 'finance' },
   { to: '/home/requests', key: 'requests' },
   { to: '/home/tasks', key: 'tasks' },

@@ -8,13 +8,13 @@
 -- Documents: categorization + links to any section entity
 -- ---------------------------------------------------------------------------
 alter table public.documents
-  add column category text not null default 'general'
+  add column if not exists category text not null default 'general'
     check (category in ('general','receipt','invoice','contract','photo','plan','other')),
-  add column entity_type text
+  add column if not exists entity_type text
     check (entity_type is null or entity_type in
       ('transaction','task','request','room','stage','asset','event','maintenance')),
-  add column entity_id text,
-  add column tags text[] not null default '{}';
+  add column if not exists entity_id text,
+  add column if not exists tags text[] not null default '{}';
 
 -- Documents: family members may add family-visible files; owner_only files
 -- are created and read by the owner alone (select policy from stage 2b).
@@ -26,6 +26,7 @@ create policy documents_insert on public.documents for insert
     and owner_id = auth.uid()
     and (visibility = 'family' or public.is_family_owner(family_id))
   );
+drop policy if exists documents_delete on public.documents;
 create policy documents_delete on public.documents for delete
   using (public.is_family_owner(family_id) or owner_id = auth.uid());
 
@@ -38,6 +39,7 @@ insert into storage.buckets (id, name, public)
 values ('homeos-docs', 'homeos-docs', false)
 on conflict (id) do nothing;
 
+drop policy if exists docs_storage_read on storage.objects;
 create policy docs_storage_read on storage.objects for select using (
   bucket_id = 'homeos-docs'
   and name ~ '^[0-9a-fA-F-]{36}/(family|owner_only)/'
@@ -52,6 +54,7 @@ create policy docs_storage_read on storage.objects for select using (
   )
 );
 
+drop policy if exists docs_storage_write on storage.objects;
 create policy docs_storage_write on storage.objects for insert with check (
   bucket_id = 'homeos-docs'
   and name ~ '^[0-9a-fA-F-]{36}/(family|owner_only)/'
@@ -66,6 +69,7 @@ create policy docs_storage_write on storage.objects for insert with check (
   )
 );
 
+drop policy if exists docs_storage_delete on storage.objects;
 create policy docs_storage_delete on storage.objects for delete using (
   bucket_id = 'homeos-docs'
   and name ~ '^[0-9a-fA-F-]{36}/(family|owner_only)/'
@@ -75,16 +79,19 @@ create policy docs_storage_delete on storage.objects for delete using (
 -- ---------------------------------------------------------------------------
 -- Per-user notification settings: kinds jsonb maps kind -> 'off' (default on)
 -- ---------------------------------------------------------------------------
-create table public.notification_settings (
+create table if not exists public.notification_settings (
   profile_id uuid primary key references public.profiles(id) on delete cascade,
   kinds jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
 alter table public.notification_settings enable row level security;
+drop policy if exists notification_settings_select on public.notification_settings;
 create policy notification_settings_select on public.notification_settings for select
   using (profile_id = auth.uid());
+drop policy if exists notification_settings_upsert on public.notification_settings;
 create policy notification_settings_upsert on public.notification_settings for insert
   with check (profile_id = auth.uid());
+drop policy if exists notification_settings_update on public.notification_settings;
 create policy notification_settings_update on public.notification_settings for update
   using (profile_id = auth.uid());
 

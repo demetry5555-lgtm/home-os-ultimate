@@ -10,21 +10,21 @@ alter table public.accounts drop constraint accounts_type_check;
 alter table public.accounts add constraint accounts_type_check
   check (type in ('cash','bank','wallet','vault','card','member'));
 -- A member account belongs to one family member; NULL = family-wide account.
-alter table public.accounts add column owner_profile_id uuid references public.profiles(id);
+alter table public.accounts add column if not exists owner_profile_id uuid references public.profiles(id);
 
 -- Receipts and member attribution on transactions.
-alter table public.transactions add column receipt_path text;      -- private storage path, never public URL
-alter table public.transactions add column member_id uuid references public.profiles(id);
+alter table public.transactions add column if not exists receipt_path text;      -- private storage path, never public URL
+alter table public.transactions add column if not exists member_id uuid references public.profiles(id);
 
 -- A loan/advance can be tied to a family member.
-alter table public.loans add column profile_id uuid references public.profiles(id);
+alter table public.loans add column if not exists profile_id uuid references public.profiles(id);
 
 -- Salaries: monthly or day-wage.
-alter table public.salaries add column pay_type text not null default 'monthly'
+alter table public.salaries add column if not exists pay_type text not null default 'monthly'
   check (pay_type in ('monthly','daily'));
 
 -- Payslips: one row per payout with the exact math frozen at payment time.
-create table public.salary_payments (
+create table if not exists public.salary_payments (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   salary_id uuid not null references public.salaries(id) on delete cascade,
@@ -39,15 +39,16 @@ create table public.salary_payments (
   unique (salary_id, period)                       -- no double-paying a period
 );
 alter table public.salary_payments enable row level security;
+drop policy if exists salary_payments_select on public.salary_payments;
 create policy salary_payments_select on public.salary_payments for select
   using (public.is_family_owner(family_id) or profile_id = auth.uid());
 
 -- Budgets: monthly or annual; family-wide, per apartment, or per member.
-alter table public.budgets add column period text not null default 'monthly'
+alter table public.budgets add column if not exists period text not null default 'monthly'
   check (period in ('monthly','annual'));
-alter table public.budgets add column scope text not null default 'family'
+alter table public.budgets add column if not exists scope text not null default 'family'
   check (scope in ('family','apartment','member'));
-alter table public.budgets add column scope_id uuid;  -- apartments.id or profiles.id
+alter table public.budgets add column if not exists scope_id uuid;  -- apartments.id or profiles.id
 
 -- ---------------------------------------------------------------------------
 -- record_income: credit an account atomically.

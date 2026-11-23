@@ -11,28 +11,28 @@
 -- ---------------------------------------------------------------------------
 insert into public.role_permissions (role, permission_key) values
   ('supervisor', 'apartment.manage'),
-  ('supervisor', 'assets.manage');
+  ('supervisor', 'assets.manage') on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
 -- TASKS
 -- ---------------------------------------------------------------------------
 alter table public.tasks
   drop column due_at,
-  add column description text not null default '',
-  add column participants uuid[] not null default '{}',
-  add column priority text not null default 'normal'
+  add column if not exists description text not null default '',
+  add column if not exists participants uuid[] not null default '{}',
+  add column if not exists priority text not null default 'normal'
     check (priority in ('low','normal','high','urgent')),
-  add column start_date date,
-  add column due_date date,
-  add column budget numeric(14,2) check (budget is null or budget >= 0),
-  add column recurrence text not null default 'none'
+  add column if not exists start_date date,
+  add column if not exists due_date date,
+  add column if not exists budget numeric(14,2) check (budget is null or budget >= 0),
+  add column if not exists recurrence text not null default 'none'
     check (recurrence in ('none','daily','weekly','monthly')),
-  add column requires_approval boolean not null default false,
-  add column rating smallint check (rating between 1 and 5),
-  add column linked_request_id uuid references public.requests(id),
-  add column room_id uuid references public.rooms(id),
-  add column completed_at timestamptz,
-  add column approved_by uuid references public.profiles(id),
+  add column if not exists requires_approval boolean not null default false,
+  add column if not exists rating smallint check (rating between 1 and 5),
+  add column if not exists linked_request_id uuid references public.requests(id),
+  add column if not exists room_id uuid references public.rooms(id),
+  add column if not exists completed_at timestamptz,
+  add column if not exists approved_by uuid references public.profiles(id),
   add check (due_date is null or start_date is null or due_date >= start_date);
 
 alter table public.tasks drop constraint tasks_status_check;
@@ -42,7 +42,7 @@ alter table public.tasks alter column status set default 'todo';
 update public.tasks set status = 'todo' where status = 'open';
 update public.tasks set status = 'completed' where status = 'done';
 
-create table public.task_steps (
+create table if not exists public.task_steps (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references public.tasks(id) on delete cascade,
   title text not null check (char_length(title) between 1 and 200),
@@ -50,11 +50,11 @@ create table public.task_steps (
   position int not null default 0,
   created_at timestamptz not null default now()
 );
-create index task_steps_task_idx on public.task_steps (task_id, position);
+create index if not exists task_steps_task_idx on public.task_steps (task_id, position);
 
 -- Attachments/proof photos: storage PATHS only until the documents stage
 -- wires binary upload to Supabase Storage.
-create table public.task_attachments (
+create table if not exists public.task_attachments (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references public.tasks(id) on delete cascade,
   path text not null,
@@ -63,16 +63,16 @@ create table public.task_attachments (
   created_at timestamptz not null default now()
 );
 
-create table public.task_comments (
+create table if not exists public.task_comments (
   id bigint generated always as identity primary key,
   task_id uuid not null references public.tasks(id) on delete cascade,
   author_id uuid not null references public.profiles(id),
   body text not null check (char_length(body) between 1 and 4000),
   created_at timestamptz not null default now()
 );
-create index task_comments_task_idx on public.task_comments (task_id, created_at);
+create index if not exists task_comments_task_idx on public.task_comments (task_id, created_at);
 
-create table public.task_events (
+create table if not exists public.task_events (
   id bigint generated always as identity primary key,
   task_id uuid not null references public.tasks(id) on delete cascade,
   actor_id uuid not null references public.profiles(id),
@@ -82,7 +82,7 @@ create table public.task_events (
   note text not null default '',
   created_at timestamptz not null default now()
 );
-create index task_events_task_idx on public.task_events (task_id, created_at);
+create index if not exists task_events_task_idx on public.task_events (task_id, created_at);
 
 alter table public.task_steps enable row level security;
 alter table public.task_attachments enable row level security;
@@ -223,28 +223,36 @@ $$;
 -- Direct table access: read within family; create as family member; no
 -- client-side status flips (those go through set_task_status).
 drop policy tasks_update on public.tasks;
+drop policy if exists tasks_update_fields on public.tasks;
 create policy tasks_update_fields on public.tasks for update
   using (public.is_family_member(family_id))
   with check (public.is_family_member(family_id));
 
+drop policy if exists task_steps_select on public.task_steps;
 create policy task_steps_select on public.task_steps for select
   using (exists (select 1 from public.tasks t where t.id = task_id and public.is_family_member(t.family_id)));
+drop policy if exists task_steps_write on public.task_steps;
 create policy task_steps_write on public.task_steps for all
   using (exists (select 1 from public.tasks t where t.id = task_id and public.is_family_member(t.family_id)))
   with check (exists (select 1 from public.tasks t where t.id = task_id and public.is_family_member(t.family_id)));
 
+drop policy if exists task_attachments_select on public.task_attachments;
 create policy task_attachments_select on public.task_attachments for select
   using (exists (select 1 from public.tasks t where t.id = task_id and public.is_family_member(t.family_id)));
+drop policy if exists task_attachments_insert on public.task_attachments;
 create policy task_attachments_insert on public.task_attachments for insert
   with check (uploaded_by = auth.uid() and exists (
     select 1 from public.tasks t where t.id = task_id and public.is_family_member(t.family_id)));
 
+drop policy if exists task_comments_select on public.task_comments;
 create policy task_comments_select on public.task_comments for select
   using (exists (select 1 from public.tasks t where t.id = task_id and public.is_family_member(t.family_id)));
+drop policy if exists task_comments_insert on public.task_comments;
 create policy task_comments_insert on public.task_comments for insert
   with check (author_id = auth.uid() and exists (
     select 1 from public.tasks t where t.id = task_id and public.is_family_member(t.family_id)));
 
+drop policy if exists task_events_select on public.task_events;
 create policy task_events_select on public.task_events for select
   using (exists (select 1 from public.tasks t where t.id = task_id and public.is_family_member(t.family_id)));
 
@@ -252,24 +260,27 @@ create policy task_events_select on public.task_events for select
 -- CALENDAR
 -- ---------------------------------------------------------------------------
 alter table public.calendar_events
-  add column description text not null default '',
-  add column kind text not null default 'event'
+  add column if not exists description text not null default '',
+  add column if not exists kind text not null default 'event'
     check (kind in ('event','occasion','maintenance','other')),
-  add column all_day boolean not null default false,
-  add column recurrence text not null default 'none'
+  add column if not exists all_day boolean not null default false,
+  add column if not exists recurrence text not null default 'none'
     check (recurrence in ('none','daily','weekly','monthly')),
-  add column reminder_minutes int[] not null default '{}',
-  add column linked_member_id uuid references public.profiles(id),
-  add column linked_task_id uuid references public.tasks(id),
-  add column linked_request_id uuid references public.requests(id);
+  add column if not exists reminder_minutes int[] not null default '{}',
+  add column if not exists linked_member_id uuid references public.profiles(id),
+  add column if not exists linked_task_id uuid references public.tasks(id),
+  add column if not exists linked_request_id uuid references public.requests(id);
 
 -- Edit/delete: your own events, or owner/supervisor for any family event.
 drop policy calendar_write on public.calendar_events;
+drop policy if exists calendar_insert on public.calendar_events;
 create policy calendar_insert on public.calendar_events for insert
   with check (public.is_family_member(family_id) and created_by = auth.uid());
+drop policy if exists calendar_update on public.calendar_events;
 create policy calendar_update on public.calendar_events for update
   using (public.is_family_member(family_id)
          and (created_by = auth.uid() or public.can_approve_tasks(family_id)));
+drop policy if exists calendar_delete on public.calendar_events;
 create policy calendar_delete on public.calendar_events for delete
   using (public.is_family_member(family_id)
          and (created_by = auth.uid() or public.can_approve_tasks(family_id)));
@@ -278,52 +289,52 @@ create policy calendar_delete on public.calendar_events for delete
 -- APARTMENT
 -- ---------------------------------------------------------------------------
 alter table public.apartments
-  add column area_sqm numeric(10,2) check (area_sqm is null or area_sqm > 0),
-  add column rooms_count smallint check (rooms_count is null or rooms_count >= 0),
-  add column photos text[] not null default '{}',
-  add column plans text[] not null default '{}',
-  add column budget numeric(14,2) check (budget is null or budget >= 0),
-  add column status text not null default 'planning'
+  add column if not exists area_sqm numeric(10,2) check (area_sqm is null or area_sqm > 0),
+  add column if not exists rooms_count smallint check (rooms_count is null or rooms_count >= 0),
+  add column if not exists photos text[] not null default '{}',
+  add column if not exists plans text[] not null default '{}',
+  add column if not exists budget numeric(14,2) check (budget is null or budget >= 0),
+  add column if not exists status text not null default 'planning'
     check (status in ('planning','finishing','finished','living'));
 
 alter table public.rooms
-  add column area_sqm numeric(10,2) check (area_sqm is null or area_sqm > 0),
-  add column dimensions text,
-  add column photos text[] not null default '{}',
-  add column flooring text,
-  add column paint_color text,
-  add column paint_codes text,
-  add column gypsum text,
-  add column lighting text,
-  add column doors text,
-  add column windows text,
-  add column electric text,
-  add column plumbing text,
-  add column furniture text,
-  add column appliances text,
-  add column notes text;
+  add column if not exists area_sqm numeric(10,2) check (area_sqm is null or area_sqm > 0),
+  add column if not exists dimensions text,
+  add column if not exists photos text[] not null default '{}',
+  add column if not exists flooring text,
+  add column if not exists paint_color text,
+  add column if not exists paint_codes text,
+  add column if not exists gypsum text,
+  add column if not exists lighting text,
+  add column if not exists doors text,
+  add column if not exists windows text,
+  add column if not exists electric text,
+  add column if not exists plumbing text,
+  add column if not exists furniture text,
+  add column if not exists appliances text,
+  add column if not exists notes text;
 
 alter table public.finishing_stages
-  add column percent_complete smallint not null default 0
+  add column if not exists percent_complete smallint not null default 0
     check (percent_complete between 0 and 100),
-  add column budget numeric(14,2) check (budget is null or budget >= 0),
-  add column owner_profile_id uuid references public.profiles(id),
-  add column start_date date,
-  add column end_date date,
-  add column before_photos text[] not null default '{}',
-  add column after_photos text[] not null default '{}';
+  add column if not exists budget numeric(14,2) check (budget is null or budget >= 0),
+  add column if not exists owner_profile_id uuid references public.profiles(id),
+  add column if not exists start_date date,
+  add column if not exists end_date date,
+  add column if not exists before_photos text[] not null default '{}',
+  add column if not exists after_photos text[] not null default '{}';
 
 alter table public.assets rename column value to price;
 alter table public.assets
-  add column kind text not null default 'other' check (kind in ('furniture','appliance','other')),
-  add column brand text,
-  add column model text,
-  add column warranty_until date,
-  add column serial text,
-  add column invoice_path text,
-  add column location text;
+  add column if not exists kind text not null default 'other' check (kind in ('furniture','appliance','other')),
+  add column if not exists brand text,
+  add column if not exists model text,
+  add column if not exists warranty_until date,
+  add column if not exists serial text,
+  add column if not exists invoice_path text,
+  add column if not exists location text;
 
-create table public.suppliers (
+create table if not exists public.suppliers (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   name text not null check (char_length(name) between 1 and 200),
@@ -336,29 +347,31 @@ create table public.suppliers (
 alter table public.suppliers enable row level security;
 
 alter table public.maintenance
-  add column description text not null default '',
-  add column room_id uuid references public.rooms(id),
-  add column supplier_id uuid references public.suppliers(id),
-  add column done_date date,
-  add column linked_transaction_id uuid references public.transactions(id);
+  add column if not exists description text not null default '',
+  add column if not exists room_id uuid references public.rooms(id),
+  add column if not exists supplier_id uuid references public.suppliers(id),
+  add column if not exists done_date date,
+  add column if not exists linked_transaction_id uuid references public.transactions(id);
 alter table public.maintenance drop constraint maintenance_status_check;
 alter table public.maintenance add constraint maintenance_status_check
   check (status in ('open','scheduled','in_progress','done','cancelled'));
 
 -- Live budget link: expenses can be tagged to a room, stage or maintenance job.
 alter table public.transactions
-  add column room_id uuid references public.rooms(id),
-  add column stage_id uuid references public.finishing_stages(id),
-  add column maintenance_id uuid references public.maintenance(id);
+  add column if not exists room_id uuid references public.rooms(id),
+  add column if not exists stage_id uuid references public.finishing_stages(id),
+  add column if not exists maintenance_id uuid references public.maintenance(id);
 
 -- Apartment writes move from owner-only to apartment.manage / assets.manage
 -- (owner keeps every permission; supervisors gain them above).
 drop policy apartments_write on public.apartments;
+drop policy if exists apartments_write on public.apartments;
 create policy apartments_write on public.apartments for all
   using (public.is_family_member(family_id) and public.has_permission('apartment.manage'))
   with check (public.is_family_member(family_id) and public.has_permission('apartment.manage'));
 
 drop policy rooms_write on public.rooms;
+drop policy if exists rooms_write on public.rooms;
 create policy rooms_write on public.rooms for all
   using (exists (select 1 from public.apartments a where a.id = apartment_id
                  and public.is_family_member(a.family_id) and public.has_permission('apartment.manage')))
@@ -366,6 +379,7 @@ create policy rooms_write on public.rooms for all
                  and public.is_family_member(a.family_id) and public.has_permission('apartment.manage')));
 
 drop policy finishing_write on public.finishing_stages;
+drop policy if exists finishing_write on public.finishing_stages;
 create policy finishing_write on public.finishing_stages for all
   using (exists (select 1 from public.rooms r join public.apartments a on a.id = r.apartment_id
                  where r.id = room_id and public.is_family_member(a.family_id)
@@ -375,11 +389,14 @@ create policy finishing_write on public.finishing_stages for all
                  and public.has_permission('apartment.manage')));
 
 drop policy assets_write on public.assets;
+drop policy if exists assets_write on public.assets;
 create policy assets_write on public.assets for all
   using (public.is_family_member(family_id) and public.has_permission('assets.manage'))
   with check (public.is_family_member(family_id) and public.has_permission('assets.manage'));
 
+drop policy if exists suppliers_select on public.suppliers;
 create policy suppliers_select on public.suppliers for select using (public.is_family_member(family_id));
+drop policy if exists suppliers_write on public.suppliers;
 create policy suppliers_write on public.suppliers for all
   using (public.is_family_member(family_id) and public.has_permission('apartment.manage'))
   with check (public.is_family_member(family_id) and public.has_permission('apartment.manage'));

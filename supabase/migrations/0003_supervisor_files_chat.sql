@@ -19,7 +19,7 @@ insert into public.role_permissions (role, permission_key) values
   ('supervisor', 'finance.manage'),
   ('supervisor', 'requests.create'),
   ('supervisor', 'requests.decide'),
-  ('supervisor', 'tasks.manage');
+  ('supervisor', 'tasks.manage') on conflict do nothing;
 
 -- Owner appoints / demotes supervisors. Owner role itself is immutable.
 create or replace function public.set_member_role(p_profile_id uuid, p_role text)
@@ -49,11 +49,12 @@ $$;
 -- visibility = 'owner_only' (default, the sensitive store) or 'family'.
 -- ---------------------------------------------------------------------------
 alter table public.documents
-  add column visibility text not null default 'owner_only'
+  add column if not exists visibility text not null default 'owner_only'
     check (visibility in ('owner_only','family')),
-  add column subject_profile_id uuid references public.profiles(id);
+  add column if not exists subject_profile_id uuid references public.profiles(id);
 
 drop policy documents_select on public.documents;
+drop policy if exists documents_select on public.documents;
 create policy documents_select on public.documents for select
   using (
     public.is_family_owner(family_id)
@@ -63,7 +64,7 @@ create policy documents_select on public.documents for select
 -- ---------------------------------------------------------------------------
 -- Chat: one family room per family + private 1:1 threads between members.
 -- ---------------------------------------------------------------------------
-create table public.chat_threads (
+create table if not exists public.chat_threads (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   kind text not null check (kind in ('family','direct')),
@@ -72,17 +73,17 @@ create table public.chat_threads (
   created_at timestamptz not null default now(),
   check ((kind = 'family' and direct_key is null) or (kind = 'direct' and direct_key is not null))
 );
-create unique index chat_threads_family_room_uq on public.chat_threads (family_id) where kind = 'family';
-create unique index chat_threads_direct_uq on public.chat_threads (family_id, direct_key) where kind = 'direct';
+create unique index if not exists chat_threads_family_room_uq on public.chat_threads (family_id) where kind = 'family';
+create unique index if not exists chat_threads_direct_uq on public.chat_threads (family_id, direct_key) where kind = 'direct';
 
-create table public.chat_messages (
+create table if not exists public.chat_messages (
   id bigint generated always as identity primary key,
   thread_id uuid not null references public.chat_threads(id) on delete cascade,
   sender_id uuid not null references public.profiles(id),
   body text not null check (char_length(body) between 1 and 4000),
   created_at timestamptz not null default now()
 );
-create index chat_messages_thread_idx on public.chat_messages (thread_id, created_at);
+create index if not exists chat_messages_thread_idx on public.chat_messages (thread_id, created_at);
 
 -- Thread access: family room -> any active family member; direct -> the pair only.
 create or replace function public.can_read_thread(p_thread_id uuid)
@@ -152,9 +153,12 @@ $$;
 alter table public.chat_threads enable row level security;
 alter table public.chat_messages enable row level security;
 
+drop policy if exists chat_threads_select on public.chat_threads;
 create policy chat_threads_select on public.chat_threads for select
   using (public.can_read_thread(id));
+drop policy if exists chat_messages_select on public.chat_messages;
 create policy chat_messages_select on public.chat_messages for select
   using (public.can_read_thread(thread_id));
+drop policy if exists chat_messages_insert on public.chat_messages;
 create policy chat_messages_insert on public.chat_messages for insert
   with check (public.can_read_thread(thread_id) and sender_id = auth.uid());

@@ -8,7 +8,7 @@ create extension if not exists pgcrypto;
 -- ---------------------------------------------------------------------------
 -- Enumerated lookup: permissions catalog + role -> permission grants
 -- ---------------------------------------------------------------------------
-create table public.permissions (
+create table if not exists public.permissions (
   key text primary key,
   description text not null default ''
 );
@@ -24,33 +24,34 @@ insert into public.permissions (key, description) values
   ('apartment.manage',     'Manage apartment, rooms and finishing stages'),
   ('assets.manage',        'Manage assets and maintenance'),
   ('documents.manage',     'Upload and manage documents'),
-  ('members.suspend',      'Suspend or reactivate member accounts');
+  ('members.suspend',      'Suspend or reactivate member accounts') on conflict (key) do nothing;
 
-create table public.role_permissions (
+create table if not exists public.role_permissions (
   role text not null check (role in ('owner','member')),
   permission_key text not null references public.permissions(key) on delete cascade,
   primary key (role, permission_key)
 );
 
 insert into public.role_permissions (role, permission_key)
-  select 'owner', key from public.permissions;
+  select 'owner', key from public.permissions
+on conflict do nothing;
 
 insert into public.role_permissions (role, permission_key) values
   ('member', 'finance.view'),
   ('member', 'requests.create'),
-  ('member', 'tasks.manage');
+  ('member', 'tasks.manage') on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
 -- Core identity
 -- ---------------------------------------------------------------------------
-create table public.families (
+create table if not exists public.families (
   id uuid primary key default gen_random_uuid(),
   name text not null check (char_length(name) between 1 and 120),
   owner_id uuid not null references auth.users(id),
   created_at timestamptz not null default now()
 );
 
-create table public.profiles (
+create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   family_id uuid references public.families(id),
   full_name text not null check (char_length(full_name) between 1 and 120),
@@ -68,7 +69,7 @@ alter table public.families
 -- ---------------------------------------------------------------------------
 -- Invitations: hashed single-use codes, never stored in plaintext
 -- ---------------------------------------------------------------------------
-create table public.invitations (
+create table if not exists public.invitations (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   code_hash text not null unique,               -- sha256 hex of the code
@@ -87,12 +88,12 @@ create table public.invitations (
     or (status <> 'accepted' and accepted_by is null and accepted_at is null)
   )
 );
-create index invitations_family_status_idx on public.invitations (family_id, status);
+create index if not exists invitations_family_status_idx on public.invitations (family_id, status);
 
 -- ---------------------------------------------------------------------------
 -- Sessions (audit trail of sign-in events; Supabase Auth owns the real tokens)
 -- ---------------------------------------------------------------------------
-create table public.session_events (
+create table if not exists public.session_events (
   id bigint generated always as identity primary key,
   user_id uuid not null references public.profiles(id),
   kind text not null check (kind in ('sign_in','sign_out','sign_up')),
@@ -103,7 +104,7 @@ create table public.session_events (
 -- ---------------------------------------------------------------------------
 -- Audit log
 -- ---------------------------------------------------------------------------
-create table public.audit_logs (
+create table if not exists public.audit_logs (
   id bigint generated always as identity primary key,
   family_id uuid references public.families(id),
   actor_id uuid references public.profiles(id),
@@ -113,12 +114,12 @@ create table public.audit_logs (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
-create index audit_logs_family_idx on public.audit_logs (family_id, created_at desc);
+create index if not exists audit_logs_family_idx on public.audit_logs (family_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
 -- Finance
 -- ---------------------------------------------------------------------------
-create table public.accounts (
+create table if not exists public.accounts (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   name text not null,
@@ -129,7 +130,7 @@ create table public.accounts (
   unique (family_id, name)
 );
 
-create table public.transactions (
+create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   account_id uuid not null references public.accounts(id),
@@ -141,9 +142,9 @@ create table public.transactions (
   created_by uuid not null references public.profiles(id),
   created_at timestamptz not null default now()
 );
-create index transactions_family_idx on public.transactions (family_id, created_at desc);
+create index if not exists transactions_family_idx on public.transactions (family_id, created_at desc);
 
-create table public.budgets (
+create table if not exists public.budgets (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   category text not null,
@@ -152,7 +153,7 @@ create table public.budgets (
   unique (family_id, category, month)
 );
 
-create table public.loans (
+create table if not exists public.loans (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   counterparty text not null,
@@ -164,7 +165,7 @@ create table public.loans (
   check (remaining <= principal)
 );
 
-create table public.payments (
+create table if not exists public.payments (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   loan_id uuid references public.loans(id) on delete cascade,
@@ -174,7 +175,7 @@ create table public.payments (
   note text not null default ''
 );
 
-create table public.salaries (
+create table if not exists public.salaries (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   profile_id uuid not null references public.profiles(id),
@@ -188,7 +189,7 @@ create table public.salaries (
 -- ---------------------------------------------------------------------------
 -- Requests and tasks
 -- ---------------------------------------------------------------------------
-create table public.requests (
+create table if not exists public.requests (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   requester_id uuid not null references public.profiles(id),
@@ -204,7 +205,7 @@ create table public.requests (
   )
 );
 
-create table public.tasks (
+create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   title text not null check (char_length(title) between 1 and 200),
@@ -215,7 +216,7 @@ create table public.tasks (
   created_at timestamptz not null default now()
 );
 
-create table public.calendar_events (
+create table if not exists public.calendar_events (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   title text not null,
@@ -229,7 +230,7 @@ create table public.calendar_events (
 -- ---------------------------------------------------------------------------
 -- Apartment
 -- ---------------------------------------------------------------------------
-create table public.apartments (
+create table if not exists public.apartments (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   name text not null,
@@ -238,7 +239,7 @@ create table public.apartments (
   unique (family_id)                          -- one apartment per family for now
 );
 
-create table public.rooms (
+create table if not exists public.rooms (
   id uuid primary key default gen_random_uuid(),
   apartment_id uuid not null references public.apartments(id) on delete cascade,
   name text not null,
@@ -246,7 +247,7 @@ create table public.rooms (
   unique (apartment_id, name)
 );
 
-create table public.finishing_stages (
+create table if not exists public.finishing_stages (
   id uuid primary key default gen_random_uuid(),
   room_id uuid not null references public.rooms(id) on delete cascade,
   stage text not null,
@@ -255,7 +256,7 @@ create table public.finishing_stages (
   unique (room_id, stage)
 );
 
-create table public.assets (
+create table if not exists public.assets (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   room_id uuid references public.rooms(id),
@@ -264,7 +265,7 @@ create table public.assets (
   value numeric(14,2) check (value is null or value >= 0)
 );
 
-create table public.maintenance (
+create table if not exists public.maintenance (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   asset_id uuid references public.assets(id),
@@ -277,7 +278,7 @@ create table public.maintenance (
 -- ---------------------------------------------------------------------------
 -- Documents and notifications
 -- ---------------------------------------------------------------------------
-create table public.documents (
+create table if not exists public.documents (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   owner_id uuid not null references public.profiles(id),
@@ -290,7 +291,7 @@ create table public.documents (
   unique (bucket, path)
 );
 
-create table public.notifications (
+create table if not exists public.notifications (
   id bigint generated always as identity primary key,
   profile_id uuid not null references public.profiles(id) on delete cascade,
   family_id uuid not null references public.families(id) on delete cascade,
@@ -300,7 +301,7 @@ create table public.notifications (
   read_at timestamptz,
   created_at timestamptz not null default now()
 );
-create index notifications_profile_unread_idx
+create index if not exists notifications_profile_unread_idx
   on public.notifications (profile_id) where read_at is null;
 
 -- ============================================================================
@@ -547,109 +548,153 @@ alter table public.permissions       enable row level security;
 alter table public.role_permissions  enable row level security;
 
 -- Reference data: readable by any signed-in user, never writable from clients.
+drop policy if exists permissions_read on public.permissions;
 create policy permissions_read on public.permissions for select using (auth.uid() is not null);
+drop policy if exists role_permissions_read on public.role_permissions;
 create policy role_permissions_read on public.role_permissions for select using (auth.uid() is not null);
 
 -- Profiles: family members see each other; you always see and edit yourself.
+drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles for select
   using (id = auth.uid() or public.is_family_member(family_id));
+drop policy if exists profiles_update_self on public.profiles;
 create policy profiles_update_self on public.profiles for update
   using (id = auth.uid()) with check (id = auth.uid() and role = (select role from public.profiles where id = auth.uid()));
 
 -- Families: members can read; only owner can update.
+drop policy if exists families_select on public.families;
 create policy families_select on public.families for select using (public.is_family_member(id));
+drop policy if exists families_update_owner on public.families;
 create policy families_update_owner on public.families for update using (public.is_family_owner(id));
 
 -- Invitations: only the family owner reads the list; writes go through the
 -- security-definer functions (create_invitation / accept / revoke).
+drop policy if exists invitations_select_owner on public.invitations;
 create policy invitations_select_owner on public.invitations for select
   using (public.is_family_owner(family_id));
 
 -- Session events: you read and insert only your own.
+drop policy if exists session_events_select on public.session_events;
 create policy session_events_select on public.session_events for select using (user_id = auth.uid());
+drop policy if exists session_events_insert on public.session_events;
 create policy session_events_insert on public.session_events for insert with check (user_id = auth.uid());
 
 -- Audit log: family members read; only functions insert (no client policy).
+drop policy if exists audit_logs_select on public.audit_logs;
 create policy audit_logs_select on public.audit_logs for select
   using (family_id is not null and public.is_family_member(family_id));
 
 -- Finance
+drop policy if exists accounts_select on public.accounts;
 create policy accounts_select on public.accounts for select using (public.is_family_member(family_id));
+drop policy if exists accounts_write on public.accounts;
 create policy accounts_write on public.accounts for all
   using (public.is_family_owner(family_id)) with check (public.is_family_owner(family_id));
 
+drop policy if exists transactions_select on public.transactions;
 create policy transactions_select on public.transactions for select using (public.is_family_member(family_id));
+drop policy if exists transactions_insert on public.transactions;
 create policy transactions_insert on public.transactions for insert
   with check (public.is_family_member(family_id) and public.has_permission('finance.manage'));
 
+drop policy if exists budgets_all on public.budgets;
 create policy budgets_all on public.budgets for all
   using (public.is_family_member(family_id) and public.has_permission('finance.manage'))
   with check (public.is_family_member(family_id) and public.has_permission('finance.manage'));
 
+drop policy if exists loans_select on public.loans;
 create policy loans_select on public.loans for select using (public.is_family_member(family_id));
+drop policy if exists loans_write on public.loans;
 create policy loans_write on public.loans for all
   using (public.is_family_owner(family_id)) with check (public.is_family_owner(family_id));
 
+drop policy if exists payments_select on public.payments;
 create policy payments_select on public.payments for select using (public.is_family_member(family_id));
+drop policy if exists payments_insert on public.payments;
 create policy payments_insert on public.payments for insert
   with check (public.is_family_member(family_id) and public.has_permission('finance.manage'));
 
+drop policy if exists salaries_select on public.salaries;
 create policy salaries_select on public.salaries for select
   using (public.is_family_owner(family_id) or profile_id = auth.uid());
+drop policy if exists salaries_write on public.salaries;
 create policy salaries_write on public.salaries for all
   using (public.is_family_owner(family_id)) with check (public.is_family_owner(family_id));
 
 -- Requests: members create their own and read the family's; owners decide via update.
+drop policy if exists requests_select on public.requests;
 create policy requests_select on public.requests for select using (public.is_family_member(family_id));
+drop policy if exists requests_insert on public.requests;
 create policy requests_insert on public.requests for insert
   with check (public.is_family_member(family_id) and requester_id = auth.uid());
+drop policy if exists requests_update_owner on public.requests;
 create policy requests_update_owner on public.requests for update
   using (public.is_family_owner(family_id));
 
 -- Tasks
+drop policy if exists tasks_select on public.tasks;
 create policy tasks_select on public.tasks for select using (public.is_family_member(family_id));
+drop policy if exists tasks_insert on public.tasks;
 create policy tasks_insert on public.tasks for insert
   with check (public.is_family_member(family_id) and created_by = auth.uid());
+drop policy if exists tasks_update on public.tasks;
 create policy tasks_update on public.tasks for update using (public.is_family_member(family_id));
 
 -- Calendar
+drop policy if exists calendar_select on public.calendar_events;
 create policy calendar_select on public.calendar_events for select using (public.is_family_member(family_id));
+drop policy if exists calendar_write on public.calendar_events;
 create policy calendar_write on public.calendar_events for all
   using (public.is_family_member(family_id)) with check (public.is_family_member(family_id));
 
 -- Apartment: members read, owner manages.
+drop policy if exists apartments_select on public.apartments;
 create policy apartments_select on public.apartments for select using (public.is_family_member(family_id));
+drop policy if exists apartments_write on public.apartments;
 create policy apartments_write on public.apartments for all
   using (public.is_family_owner(family_id)) with check (public.is_family_owner(family_id));
 
+drop policy if exists rooms_select on public.rooms;
 create policy rooms_select on public.rooms for select
   using (exists (select 1 from public.apartments a where a.id = apartment_id and public.is_family_member(a.family_id)));
+drop policy if exists rooms_write on public.rooms;
 create policy rooms_write on public.rooms for all
   using (exists (select 1 from public.apartments a where a.id = apartment_id and public.is_family_owner(a.family_id)));
 
+drop policy if exists finishing_select on public.finishing_stages;
 create policy finishing_select on public.finishing_stages for select
   using (exists (select 1 from public.rooms r join public.apartments a on a.id = r.apartment_id
                  where r.id = room_id and public.is_family_member(a.family_id)));
+drop policy if exists finishing_write on public.finishing_stages;
 create policy finishing_write on public.finishing_stages for all
   using (exists (select 1 from public.rooms r join public.apartments a on a.id = r.apartment_id
                  where r.id = room_id and public.is_family_owner(a.family_id)));
 
+drop policy if exists assets_select on public.assets;
 create policy assets_select on public.assets for select using (public.is_family_member(family_id));
+drop policy if exists assets_write on public.assets;
 create policy assets_write on public.assets for all
   using (public.is_family_owner(family_id)) with check (public.is_family_owner(family_id));
 
+drop policy if exists maintenance_select on public.maintenance;
 create policy maintenance_select on public.maintenance for select using (public.is_family_member(family_id));
+drop policy if exists maintenance_write on public.maintenance;
 create policy maintenance_write on public.maintenance for all
   using (public.is_family_member(family_id)) with check (public.is_family_member(family_id));
 
 -- Documents: metadata is family-visible; the storage bucket stays private and
 -- files are served only via short-lived signed URLs.
+drop policy if exists documents_select on public.documents;
 create policy documents_select on public.documents for select using (public.is_family_member(family_id));
+drop policy if exists documents_insert on public.documents;
 create policy documents_insert on public.documents for insert
   with check (public.is_family_member(family_id) and owner_id = auth.uid());
+drop policy if exists documents_delete on public.documents;
 create policy documents_delete on public.documents for delete
   using (owner_id = auth.uid() or public.is_family_owner(family_id));
 
 -- Notifications: strictly per-recipient.
+drop policy if exists notifications_select on public.notifications;
 create policy notifications_select on public.notifications for select using (profile_id = auth.uid());
+drop policy if exists notifications_update on public.notifications;
 create policy notifications_update on public.notifications for update using (profile_id = auth.uid());

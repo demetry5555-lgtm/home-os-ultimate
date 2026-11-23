@@ -1,13 +1,7 @@
--- HOME OS PART 1 OF 7
--- Run the parts strictly in order, each one once, in the Supabase SQL Editor.
--- ============================================================================
--- HOME OS ULTIMATE - COMPLETE DATABASE SETUP (stages 1-3 combined)
--- Split for mobile pasting. Each part runs once, in order, in the SQL Editor.
--- Merges migrations 0001_init + 0002_finance + 0003_supervisor_files_chat
--- + 0004_requests, in order. Re-running on the same project will error at
--- the first CREATE TABLE - that is expected; it means it already ran.
--- ============================================================================
+-- HOME OS PART 1 OF 10 (part 9B is the repair for part 9)
+-- Mirrors the hosted setup page exactly. Hardened: safe to re-run any part.
 
+-- HOME OS PART 1 OF 9
 -- ============================================================================
 -- HOME OS ULTIMATE - Stage 1 foundation schema
 -- PostgreSQL / Supabase. All access enforced server-side via RLS.
@@ -18,7 +12,7 @@ create extension if not exists pgcrypto;
 -- ---------------------------------------------------------------------------
 -- Enumerated lookup: permissions catalog + role -> permission grants
 -- ---------------------------------------------------------------------------
-create table public.permissions (
+create table if not exists public.permissions (
   key text primary key,
   description text not null default ''
 );
@@ -34,33 +28,34 @@ insert into public.permissions (key, description) values
   ('apartment.manage',     'Manage apartment, rooms and finishing stages'),
   ('assets.manage',        'Manage assets and maintenance'),
   ('documents.manage',     'Upload and manage documents'),
-  ('members.suspend',      'Suspend or reactivate member accounts');
+  ('members.suspend',      'Suspend or reactivate member accounts') on conflict (key) do nothing;
 
-create table public.role_permissions (
+create table if not exists public.role_permissions (
   role text not null check (role in ('owner','member')),
   permission_key text not null references public.permissions(key) on delete cascade,
   primary key (role, permission_key)
 );
 
 insert into public.role_permissions (role, permission_key)
-  select 'owner', key from public.permissions;
+  select 'owner', key from public.permissions
+on conflict do nothing;
 
 insert into public.role_permissions (role, permission_key) values
   ('member', 'finance.view'),
   ('member', 'requests.create'),
-  ('member', 'tasks.manage');
+  ('member', 'tasks.manage') on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
 -- Core identity
 -- ---------------------------------------------------------------------------
-create table public.families (
+create table if not exists public.families (
   id uuid primary key default gen_random_uuid(),
   name text not null check (char_length(name) between 1 and 120),
   owner_id uuid not null references auth.users(id),
   created_at timestamptz not null default now()
 );
 
-create table public.profiles (
+create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   family_id uuid references public.families(id),
   full_name text not null check (char_length(full_name) between 1 and 120),
@@ -78,7 +73,7 @@ alter table public.families
 -- ---------------------------------------------------------------------------
 -- Invitations: hashed single-use codes, never stored in plaintext
 -- ---------------------------------------------------------------------------
-create table public.invitations (
+create table if not exists public.invitations (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   code_hash text not null unique,               -- sha256 hex of the code
@@ -97,12 +92,13 @@ create table public.invitations (
     or (status <> 'accepted' and accepted_by is null and accepted_at is null)
   )
 );
-create index invitations_family_status_idx on public.invitations (family_id, status);
+
+create index if not exists invitations_family_status_idx on public.invitations (family_id, status);
 
 -- ---------------------------------------------------------------------------
 -- Sessions (audit trail of sign-in events; Supabase Auth owns the real tokens)
 -- ---------------------------------------------------------------------------
-create table public.session_events (
+create table if not exists public.session_events (
   id bigint generated always as identity primary key,
   user_id uuid not null references public.profiles(id),
   kind text not null check (kind in ('sign_in','sign_out','sign_up')),
@@ -113,7 +109,7 @@ create table public.session_events (
 -- ---------------------------------------------------------------------------
 -- Audit log
 -- ---------------------------------------------------------------------------
-create table public.audit_logs (
+create table if not exists public.audit_logs (
   id bigint generated always as identity primary key,
   family_id uuid references public.families(id),
   actor_id uuid references public.profiles(id),
@@ -123,12 +119,13 @@ create table public.audit_logs (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
-create index audit_logs_family_idx on public.audit_logs (family_id, created_at desc);
+
+create index if not exists audit_logs_family_idx on public.audit_logs (family_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
 -- Finance
 -- ---------------------------------------------------------------------------
-create table public.accounts (
+create table if not exists public.accounts (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   name text not null,
@@ -139,7 +136,7 @@ create table public.accounts (
   unique (family_id, name)
 );
 
-create table public.transactions (
+create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   account_id uuid not null references public.accounts(id),
@@ -151,9 +148,10 @@ create table public.transactions (
   created_by uuid not null references public.profiles(id),
   created_at timestamptz not null default now()
 );
-create index transactions_family_idx on public.transactions (family_id, created_at desc);
 
-create table public.budgets (
+create index if not exists transactions_family_idx on public.transactions (family_id, created_at desc);
+
+create table if not exists public.budgets (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   category text not null,
@@ -162,7 +160,7 @@ create table public.budgets (
   unique (family_id, category, month)
 );
 
-create table public.loans (
+create table if not exists public.loans (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   counterparty text not null,
@@ -174,7 +172,7 @@ create table public.loans (
   check (remaining <= principal)
 );
 
-create table public.payments (
+create table if not exists public.payments (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   loan_id uuid references public.loans(id) on delete cascade,
@@ -184,7 +182,7 @@ create table public.payments (
   note text not null default ''
 );
 
-create table public.salaries (
+create table if not exists public.salaries (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   profile_id uuid not null references public.profiles(id),
@@ -193,4 +191,65 @@ create table public.salaries (
   payday smallint not null check (payday between 1 and 31),
   active boolean not null default true,
   unique (family_id, profile_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- Requests and tasks
+-- ---------------------------------------------------------------------------
+create table if not exists public.requests (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references public.families(id) on delete cascade,
+  requester_id uuid not null references public.profiles(id),
+  title text not null check (char_length(title) between 1 and 200),
+  details text not null default '',
+  status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  decided_by uuid references public.profiles(id),
+  decided_at timestamptz,
+  created_at timestamptz not null default now(),
+  constraint requests_decision_fields check (
+    (status = 'pending' and decided_by is null and decided_at is null)
+    or (status <> 'pending' and decided_by is not null and decided_at is not null)
+  )
+);
+
+create table if not exists public.tasks (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references public.families(id) on delete cascade,
+  title text not null check (char_length(title) between 1 and 200),
+  assignee_id uuid references public.profiles(id),
+  status text not null default 'open' check (status in ('open','in_progress','done','cancelled')),
+  due_at timestamptz,
+  created_by uuid not null references public.profiles(id),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.calendar_events (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references public.families(id) on delete cascade,
+  title text not null,
+  starts_at timestamptz not null,
+  ends_at timestamptz,
+  location text,
+  created_by uuid not null references public.profiles(id),
+  check (ends_at is null or ends_at > starts_at)
+);
+
+-- ---------------------------------------------------------------------------
+-- Apartment
+-- ---------------------------------------------------------------------------
+create table if not exists public.apartments (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references public.families(id) on delete cascade,
+  name text not null,
+  address text,
+  created_at timestamptz not null default now(),
+  unique (family_id)                          -- one apartment per family for now
+);
+
+create table if not exists public.rooms (
+  id uuid primary key default gen_random_uuid(),
+  apartment_id uuid not null references public.apartments(id) on delete cascade,
+  name text not null,
+  floor smallint not null default 0,
+  unique (apartment_id, name)
 );

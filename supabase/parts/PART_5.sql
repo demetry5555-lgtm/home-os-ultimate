@@ -1,5 +1,51 @@
--- HOME OS PART 6 OF 7
--- Run only after part 5 has completed successfully.
+-- HOME OS PART 5 OF 10 (part 9B is the repair for part 9)
+-- Mirrors the hosted setup page exactly. Hardened: safe to re-run any part.
+
+-- HOME OS PART 5 OF 9
+-- ---------------------------------------------------------------------------
+-- budget_report: planned vs actual per budget row for a given month.
+-- Actual = sum of expenses in the budget's category for that month,
+-- filtered by scope (family / apartment via member link / single member).
+-- ---------------------------------------------------------------------------
+create or replace function public.budget_report(p_month date)
+returns table (
+  budget_id uuid, category text, scope text, scope_id uuid,
+  planned numeric, actual numeric, remaining numeric
+) language plpgsql security definer stable set search_path = public as $$
+declare
+  v_family_id uuid;
+  v_from timestamptz;
+  v_to timestamptz;
+begin
+  select family_id into v_family_id from public.profiles where id = auth.uid();
+  if v_family_id is null then return; end if;
+  v_from := p_month::timestamptz;
+  v_to := (p_month + interval '1 month')::timestamptz;
+  return query
+  select b.id, b.category, b.scope, b.scope_id, b.monthly_limit,
+    coalesce(sum(t.amount) filter (
+      where (b.scope = 'family')
+         or (b.scope = 'member' and t.member_id = b.scope_id)
+         or (b.scope = 'apartment' and t.category like 'apartment:%')
+    ), 0) as actual,
+    b.monthly_limit - coalesce(sum(t.amount) filter (
+      where (b.scope = 'family')
+         or (b.scope = 'member' and t.member_id = b.scope_id)
+         or (b.scope = 'apartment' and t.category like 'apartment:%')
+    ), 0) as remaining
+  from public.budgets b
+  left join public.transactions t
+    on t.family_id = b.family_id and t.type = 'expense'
+   and t.category = b.category
+   and t.created_at >= case when b.period = 'annual'
+                            then date_trunc('year', p_month)::timestamptz else v_from end
+   and t.created_at <  case when b.period = 'annual'
+                            then (date_trunc('year', p_month) + interval '1 year')::timestamptz else v_to end
+  where b.family_id = v_family_id and b.month = p_month
+  group by b.id
+  order by b.category;
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- finance_summary: the dashboard cards in one round trip.
@@ -37,7 +83,6 @@ begin
 end;
 $$;
 
-
 -- ============================================================================
 -- HOME OS ULTIMATE - Stage 2b: supervisor role, owner-only personal files,
 -- family chat room schema.
@@ -45,10 +90,12 @@ $$;
 
 -- Roles: owner / supervisor / member
 alter table public.profiles drop constraint profiles_role_check;
+
 alter table public.profiles add constraint profiles_role_check
   check (role in ('owner','supervisor','member'));
 
 alter table public.role_permissions drop constraint role_permissions_role_check;
+
 alter table public.role_permissions add constraint role_permissions_role_check
   check (role in ('owner','supervisor','member'));
 
@@ -59,7 +106,7 @@ insert into public.role_permissions (role, permission_key) values
   ('supervisor', 'finance.manage'),
   ('supervisor', 'requests.create'),
   ('supervisor', 'requests.decide'),
-  ('supervisor', 'tasks.manage');
+  ('supervisor', 'tasks.manage') on conflict do nothing;
 
 -- Owner appoints / demotes supervisors. Owner role itself is immutable.
 create or replace function public.set_member_role(p_profile_id uuid, p_role text)
@@ -89,11 +136,13 @@ $$;
 -- visibility = 'owner_only' (default, the sensitive store) or 'family'.
 -- ---------------------------------------------------------------------------
 alter table public.documents
-  add column visibility text not null default 'owner_only'
+  add column if not exists visibility text not null default 'owner_only'
     check (visibility in ('owner_only','family')),
-  add column subject_profile_id uuid references public.profiles(id);
+  add column if not exists subject_profile_id uuid references public.profiles(id);
 
 drop policy documents_select on public.documents;
+
+drop policy if exists documents_select on public.documents;
 create policy documents_select on public.documents for select
   using (
     public.is_family_owner(family_id)
@@ -103,7 +152,7 @@ create policy documents_select on public.documents for select
 -- ---------------------------------------------------------------------------
 -- Chat: one family room per family + private 1:1 threads between members.
 -- ---------------------------------------------------------------------------
-create table public.chat_threads (
+create table if not exists public.chat_threads (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   kind text not null check (kind in ('family','direct')),
@@ -112,17 +161,20 @@ create table public.chat_threads (
   created_at timestamptz not null default now(),
   check ((kind = 'family' and direct_key is null) or (kind = 'direct' and direct_key is not null))
 );
-create unique index chat_threads_family_room_uq on public.chat_threads (family_id) where kind = 'family';
-create unique index chat_threads_direct_uq on public.chat_threads (family_id, direct_key) where kind = 'direct';
 
-create table public.chat_messages (
+create unique index if not exists chat_threads_family_room_uq on public.chat_threads (family_id) where kind = 'family';
+
+create unique index if not exists chat_threads_direct_uq on public.chat_threads (family_id, direct_key) where kind = 'direct';
+
+create table if not exists public.chat_messages (
   id bigint generated always as identity primary key,
   thread_id uuid not null references public.chat_threads(id) on delete cascade,
   sender_id uuid not null references public.profiles(id),
   body text not null check (char_length(body) between 1 and 4000),
   created_at timestamptz not null default now()
 );
-create index chat_messages_thread_idx on public.chat_messages (thread_id, created_at);
+
+create index if not exists chat_messages_thread_idx on public.chat_messages (thread_id, created_at);
 
 -- Thread access: family room -> any active family member; direct -> the pair only.
 create or replace function public.can_read_thread(p_thread_id uuid)
@@ -164,37 +216,3 @@ begin
   return v_thread;
 end;
 $$;
-
--- The family room is created with the family.
-create or replace function public.bootstrap_owner(p_owner_name text, p_family_name text)
-returns uuid language plpgsql security definer set search_path = public as $$
-declare
-  v_family_id uuid;
-begin
-  if auth.uid() is null then
-    raise exception 'not authenticated';
-  end if;
-  if exists (select 1 from public.profiles where id = auth.uid()) then
-    raise exception 'profile already exists';
-  end if;
-  insert into public.profiles (id, full_name, role)
-  values (auth.uid(), p_owner_name, 'owner');
-  insert into public.families (name, owner_id) values (p_family_name, auth.uid())
-  returning id into v_family_id;
-  update public.profiles set family_id = v_family_id where id = auth.uid();
-  insert into public.chat_threads (family_id, kind) values (v_family_id, 'family');
-  insert into public.audit_logs (family_id, actor_id, action, entity, entity_id)
-  values (v_family_id, auth.uid(), 'family.bootstrap', 'families', v_family_id::text);
-  return v_family_id;
-end;
-$$;
-
-alter table public.chat_threads enable row level security;
-alter table public.chat_messages enable row level security;
-
-create policy chat_threads_select on public.chat_threads for select
-  using (public.can_read_thread(id));
-create policy chat_messages_select on public.chat_messages for select
-  using (public.can_read_thread(thread_id));
-create policy chat_messages_insert on public.chat_messages for insert
-  with check (public.can_read_thread(thread_id) and sender_id = auth.uid());

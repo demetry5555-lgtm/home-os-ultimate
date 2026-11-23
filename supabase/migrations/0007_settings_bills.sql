@@ -18,6 +18,7 @@ alter table public.families
   add constraint families_default_language_check check (default_language in ('ar','en'));
 
 do $$ begin
+  drop policy if exists families_update_manage on public.families;
   create policy families_update_manage on public.families for update
     using (public.is_family_member(id) and public.has_permission('family.manage'));
 exception when duplicate_object then null;
@@ -49,21 +50,25 @@ create index if not exists bills_family_idx on public.bills (family_id, due_date
 alter table public.bills enable row level security;
 
 do $$ begin
+  drop policy if exists bills_select on public.bills;
   create policy bills_select on public.bills for select
     using (public.is_family_member(family_id));
 exception when duplicate_object then null;
 end $$;
 do $$ begin
+  drop policy if exists bills_insert on public.bills;
   create policy bills_insert on public.bills for insert
     with check (public.is_family_member(family_id) and public.has_permission('finance.manage'));
 exception when duplicate_object then null;
 end $$;
 do $$ begin
+  drop policy if exists bills_update on public.bills;
   create policy bills_update on public.bills for update
     using (public.is_family_member(family_id) and public.has_permission('finance.manage'));
 exception when duplicate_object then null;
 end $$;
 do $$ begin
+  drop policy if exists bills_delete on public.bills;
   create policy bills_delete on public.bills for delete
     using (public.is_family_member(family_id) and public.has_permission('finance.manage'));
 exception when duplicate_object then null;

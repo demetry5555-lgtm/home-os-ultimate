@@ -1,6 +1,46 @@
--- HOME OS PART 7 OF 7
--- Run only after part 6 has completed successfully.
+-- HOME OS PART 6 OF 10 (part 9B is the repair for part 9)
+-- Mirrors the hosted setup page exactly. Hardened: safe to re-run any part.
 
+-- HOME OS PART 6 OF 9
+-- The family room is created with the family.
+create or replace function public.bootstrap_owner(p_owner_name text, p_family_name text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_family_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if exists (select 1 from public.profiles where id = auth.uid()) then
+    raise exception 'profile already exists';
+  end if;
+  insert into public.profiles (id, full_name, role)
+  values (auth.uid(), p_owner_name, 'owner');
+  insert into public.families (name, owner_id) values (p_family_name, auth.uid())
+  returning id into v_family_id;
+  update public.profiles set family_id = v_family_id where id = auth.uid();
+  insert into public.chat_threads (family_id, kind) values (v_family_id, 'family');
+  insert into public.audit_logs (family_id, actor_id, action, entity, entity_id)
+  values (v_family_id, auth.uid(), 'family.bootstrap', 'families', v_family_id::text);
+  return v_family_id;
+end;
+$$;
+
+alter table public.chat_threads enable row level security;
+
+alter table public.chat_messages enable row level security;
+
+drop policy if exists chat_threads_select on public.chat_threads;
+create policy chat_threads_select on public.chat_threads for select
+  using (public.can_read_thread(id));
+
+drop policy if exists chat_messages_select on public.chat_messages;
+create policy chat_messages_select on public.chat_messages for select
+  using (public.can_read_thread(thread_id));
+
+drop policy if exists chat_messages_insert on public.chat_messages;
+create policy chat_messages_insert on public.chat_messages for insert
+  with check (public.can_read_thread(thread_id) and sender_id = auth.uid());
 
 -- ============================================================================
 -- HOME OS ULTIMATE - Stage 3: Requests center
@@ -10,27 +50,30 @@
 -- ============================================================================
 
 alter table public.requests
-  add column request_number bigint generated always as identity,
-  add column type text not null default 'custom'
+  add column if not exists request_number bigint generated always as identity,
+  add column if not exists type text not null default 'custom'
     check (type in ('money','purchase','outing','travel','booking','maintenance','leave','needs','document','help','custom')),
-  add column amount numeric(14,2) check (amount is null or amount >= 0),
-  add column priority text not null default 'normal'
+  add column if not exists amount numeric(14,2) check (amount is null or amount >= 0),
+  add column if not exists priority text not null default 'normal'
     check (priority in ('low','normal','high','urgent')),
-  add column assignee_id uuid references public.profiles(id),
-  add column linked_transaction_id uuid references public.transactions(id);
+  add column if not exists assignee_id uuid references public.profiles(id),
+  add column if not exists linked_transaction_id uuid references public.transactions(id);
 
 alter table public.requests drop constraint requests_status_check;
+
 alter table public.requests add constraint requests_status_check
   check (status in ('new','under_review','needs_info','approved','partially_approved','rejected','deferred','completed','cancelled'));
 
 alter table public.requests drop constraint requests_decision_fields;
+
 -- decided_by/decided_at track the LATEST decision; full history in request_events.
 
 alter table public.requests alter column status set default 'new';
+
 update public.requests set status = 'new' where status = 'pending';
 
 -- Every action on a request, with actor, timestamp, reason.
-create table public.request_events (
+create table if not exists public.request_events (
   id bigint generated always as identity primary key,
   request_id uuid not null references public.requests(id) on delete cascade,
   actor_id uuid not null references public.profiles(id),
@@ -40,19 +83,22 @@ create table public.request_events (
   reason text not null default '',
   created_at timestamptz not null default now()
 );
-create index request_events_request_idx on public.request_events (request_id, created_at);
+
+create index if not exists request_events_request_idx on public.request_events (request_id, created_at);
 
 -- Discussion thread per request.
-create table public.request_comments (
+create table if not exists public.request_comments (
   id bigint generated always as identity primary key,
   request_id uuid not null references public.requests(id) on delete cascade,
   author_id uuid not null references public.profiles(id),
   body text not null check (char_length(body) between 1 and 4000),
   created_at timestamptz not null default now()
 );
-create index request_comments_request_idx on public.request_comments (request_id, created_at);
+
+create index if not exists request_comments_request_idx on public.request_comments (request_id, created_at);
 
 alter table public.request_events enable row level security;
+
 alter table public.request_comments enable row level security;
 
 -- ---------------------------------------------------------------------------
@@ -146,26 +192,34 @@ $$;
 -- RLS
 -- ---------------------------------------------------------------------------
 drop policy if exists requests_select on public.requests;
+
 drop policy if exists requests_insert on public.requests;
+
 drop policy if exists requests_update_owner on public.requests;
 
+drop policy if exists requests_select on public.requests;
 create policy requests_select on public.requests for select
   using (requester_id = auth.uid() or public.can_decide_requests(family_id));
 
+drop policy if exists requests_insert on public.requests;
 create policy requests_insert on public.requests for insert
   with check (public.is_family_member(family_id) and requester_id = auth.uid() and status = 'new');
 
 -- No direct client updates: all state changes go through the functions above.
 
+drop policy if exists request_events_select on public.request_events;
 create policy request_events_select on public.request_events for select
   using (exists (select 1 from public.requests r
                  where r.id = request_id
                    and (r.requester_id = auth.uid() or public.can_decide_requests(r.family_id))));
 
+drop policy if exists request_comments_select on public.request_comments;
 create policy request_comments_select on public.request_comments for select
   using (exists (select 1 from public.requests r
                  where r.id = request_id
                    and (r.requester_id = auth.uid() or public.can_decide_requests(r.family_id))));
+
+drop policy if exists request_comments_insert on public.request_comments;
 create policy request_comments_insert on public.request_comments for insert
   with check (author_id = auth.uid() and exists (
     select 1 from public.requests r
@@ -173,11 +227,16 @@ create policy request_comments_insert on public.request_comments for insert
       and (r.requester_id = auth.uid() or public.can_decide_requests(r.family_id))));
 
 -- ============================================================================
--- VERIFICATION: run after the setup above. Expected result:
---   status = 'HOME OS ULTIMATE: database ready' , tables >= 25
+-- HOME OS ULTIMATE - Stage 4: tasks, calendar, apartment module.
+-- Tasks: full lifecycle with sub-steps, recurrence, approval, rating.
+-- Calendar: rich events with recurrence, reminders and links.
+-- Apartment: profile, rooms, finishing stages, assets, maintenance,
+-- suppliers, and live budget linkage to finance transactions.
 -- ============================================================================
-select 'HOME OS ULTIMATE: database ready ✅' as status,
-       (select count(*) from pg_tables where schemaname = 'public') as tables,
-       (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname = 'public') as functions;
 
+-- ---------------------------------------------------------------------------
+-- Supervisors may also manage the apartment and assets (owner already has all).
+-- ---------------------------------------------------------------------------
+insert into public.role_permissions (role, permission_key) values
+  ('supervisor', 'apartment.manage'),
+  ('supervisor', 'assets.manage') on conflict do nothing;

@@ -1,68 +1,8 @@
--- HOME OS PART 2 OF 7
--- Run only after part 1 has completed successfully.
+-- HOME OS PART 2 OF 10 (part 9B is the repair for part 9)
+-- Mirrors the hosted setup page exactly. Hardened: safe to re-run any part.
 
--- ---------------------------------------------------------------------------
--- Requests and tasks
--- ---------------------------------------------------------------------------
-create table public.requests (
-  id uuid primary key default gen_random_uuid(),
-  family_id uuid not null references public.families(id) on delete cascade,
-  requester_id uuid not null references public.profiles(id),
-  title text not null check (char_length(title) between 1 and 200),
-  details text not null default '',
-  status text not null default 'pending' check (status in ('pending','approved','rejected')),
-  decided_by uuid references public.profiles(id),
-  decided_at timestamptz,
-  created_at timestamptz not null default now(),
-  constraint requests_decision_fields check (
-    (status = 'pending' and decided_by is null and decided_at is null)
-    or (status <> 'pending' and decided_by is not null and decided_at is not null)
-  )
-);
-
-create table public.tasks (
-  id uuid primary key default gen_random_uuid(),
-  family_id uuid not null references public.families(id) on delete cascade,
-  title text not null check (char_length(title) between 1 and 200),
-  assignee_id uuid references public.profiles(id),
-  status text not null default 'open' check (status in ('open','in_progress','done','cancelled')),
-  due_at timestamptz,
-  created_by uuid not null references public.profiles(id),
-  created_at timestamptz not null default now()
-);
-
-create table public.calendar_events (
-  id uuid primary key default gen_random_uuid(),
-  family_id uuid not null references public.families(id) on delete cascade,
-  title text not null,
-  starts_at timestamptz not null,
-  ends_at timestamptz,
-  location text,
-  created_by uuid not null references public.profiles(id),
-  check (ends_at is null or ends_at > starts_at)
-);
-
--- ---------------------------------------------------------------------------
--- Apartment
--- ---------------------------------------------------------------------------
-create table public.apartments (
-  id uuid primary key default gen_random_uuid(),
-  family_id uuid not null references public.families(id) on delete cascade,
-  name text not null,
-  address text,
-  created_at timestamptz not null default now(),
-  unique (family_id)                          -- one apartment per family for now
-);
-
-create table public.rooms (
-  id uuid primary key default gen_random_uuid(),
-  apartment_id uuid not null references public.apartments(id) on delete cascade,
-  name text not null,
-  floor smallint not null default 0,
-  unique (apartment_id, name)
-);
-
-create table public.finishing_stages (
+-- HOME OS PART 2 OF 9
+create table if not exists public.finishing_stages (
   id uuid primary key default gen_random_uuid(),
   room_id uuid not null references public.rooms(id) on delete cascade,
   stage text not null,
@@ -71,7 +11,7 @@ create table public.finishing_stages (
   unique (room_id, stage)
 );
 
-create table public.assets (
+create table if not exists public.assets (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   room_id uuid references public.rooms(id),
@@ -80,7 +20,7 @@ create table public.assets (
   value numeric(14,2) check (value is null or value >= 0)
 );
 
-create table public.maintenance (
+create table if not exists public.maintenance (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   asset_id uuid references public.assets(id),
@@ -93,7 +33,7 @@ create table public.maintenance (
 -- ---------------------------------------------------------------------------
 -- Documents and notifications
 -- ---------------------------------------------------------------------------
-create table public.documents (
+create table if not exists public.documents (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
   owner_id uuid not null references public.profiles(id),
@@ -106,7 +46,7 @@ create table public.documents (
   unique (bucket, path)
 );
 
-create table public.notifications (
+create table if not exists public.notifications (
   id bigint generated always as identity primary key,
   profile_id uuid not null references public.profiles(id) on delete cascade,
   family_id uuid not null references public.families(id) on delete cascade,
@@ -116,7 +56,8 @@ create table public.notifications (
   read_at timestamptz,
   created_at timestamptz not null default now()
 );
-create index notifications_profile_unread_idx
+
+create index if not exists notifications_profile_unread_idx
   on public.notifications (profile_id) where read_at is null;
 
 -- ============================================================================
@@ -203,5 +144,82 @@ begin
   values (v_family_id, auth.uid(), 'invitation.create', 'invitations',
           jsonb_build_object('hint', right(v_code, 4)));
   return v_code;
+end;
+$$;
+
+-- Accept an invitation with its code. Atomic: claim + profile join in one
+-- transaction; the code is single-use and expires.
+create or replace function public.accept_invitation(p_code text, p_full_name text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_inv public.invitations%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if exists (select 1 from public.profiles where id = auth.uid()) then
+    raise exception 'profile already exists';
+  end if;
+  select * into v_inv from public.invitations
+  where code_hash = encode(digest(upper(trim(p_code)), 'sha256'), 'hex')
+  for update;                                    -- lock the row: single-use
+  if not found then
+    raise exception 'invalid invitation code';
+  end if;
+  if v_inv.status = 'pending' and v_inv.expires_at < now() then
+    update public.invitations set status = 'expired' where id = v_inv.id;
+    raise exception 'invitation expired';
+  end if;
+  if v_inv.status <> 'pending' then
+    raise exception 'invitation already used or revoked';
+  end if;
+  insert into public.profiles (id, full_name, family_id, role)
+  values (auth.uid(), p_full_name, v_inv.family_id, 'member');
+  update public.invitations
+  set status = 'accepted', accepted_by = auth.uid(), accepted_at = now()
+  where id = v_inv.id;
+  insert into public.audit_logs (family_id, actor_id, action, entity, entity_id)
+  values (v_inv.family_id, auth.uid(), 'invitation.accept', 'invitations', v_inv.id::text);
+  return v_inv.family_id;
+end;
+$$;
+
+-- Revoke an invitation (owner of its family only, and only while pending).
+create or replace function public.revoke_invitation(p_invitation_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_family_id uuid;
+begin
+  select family_id into v_family_id from public.invitations where id = p_invitation_id;
+  if v_family_id is null or not public.is_family_owner(v_family_id) then
+    raise exception 'not allowed';
+  end if;
+  update public.invitations set status = 'revoked'
+  where id = p_invitation_id and status = 'pending';
+  insert into public.audit_logs (family_id, actor_id, action, entity, entity_id)
+  values (v_family_id, auth.uid(), 'invitation.revoke', 'invitations', p_invitation_id::text);
+end;
+$$;
+
+-- Suspend or reactivate a member (owner only; cannot suspend an owner).
+create or replace function public.set_member_status(p_profile_id uuid, p_status text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_target public.profiles%rowtype;
+begin
+  select * into v_target from public.profiles where id = p_profile_id;
+  if not found or not public.is_family_owner(v_target.family_id) then
+    raise exception 'not allowed';
+  end if;
+  if v_target.role = 'owner' then
+    raise exception 'cannot suspend the owner';
+  end if;
+  if p_status not in ('active','suspended') then
+    raise exception 'invalid status';
+  end if;
+  update public.profiles set status = p_status where id = p_profile_id;
+  insert into public.audit_logs (family_id, actor_id, action, entity, entity_id, metadata)
+  values (v_target.family_id, auth.uid(), 'member.status', 'profiles',
+          p_profile_id::text, jsonb_build_object('status', p_status));
 end;
 $$;

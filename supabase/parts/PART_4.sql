@@ -1,5 +1,97 @@
--- HOME OS PART 5 OF 7
--- Run only after part 4 has completed successfully.
+-- HOME OS PART 4 OF 10 (part 9B is the repair for part 9)
+-- Mirrors the hosted setup page exactly. Hardened: safe to re-run any part.
+
+-- HOME OS PART 4 OF 9
+-- ============================================================================
+-- HOME OS ULTIMATE - Stage 2: Finance OS
+-- Atomic money, salaries with bonus/deduction, loan repayment, budget scopes,
+-- receipts. All amounts numeric(14,2); every mutation is one transaction
+-- inside a security-definer function. No client-side balance writes.
+-- ============================================================================
+
+-- Account types widen: home vaults and per-member accounts join cash/bank/wallet/card.
+alter table public.accounts drop constraint accounts_type_check;
+
+alter table public.accounts add constraint accounts_type_check
+  check (type in ('cash','bank','wallet','vault','card','member'));
+
+-- A member account belongs to one family member; NULL = family-wide account.
+alter table public.accounts add column if not exists owner_profile_id uuid references public.profiles(id);
+
+-- Receipts and member attribution on transactions.
+alter table public.transactions add column if not exists receipt_path text;
+
+      -- private storage path, never public URL
+alter table public.transactions add column if not exists member_id uuid references public.profiles(id);
+
+-- A loan/advance can be tied to a family member.
+alter table public.loans add column if not exists profile_id uuid references public.profiles(id);
+
+-- Salaries: monthly or day-wage.
+alter table public.salaries add column if not exists pay_type text not null default 'monthly'
+  check (pay_type in ('monthly','daily'));
+
+-- Payslips: one row per payout with the exact math frozen at payment time.
+create table if not exists public.salary_payments (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references public.families(id) on delete cascade,
+  salary_id uuid not null references public.salaries(id) on delete cascade,
+  profile_id uuid not null references public.profiles(id),
+  period date not null,                            -- month (or day) the pay covers
+  base numeric(14,2) not null check (base >= 0),
+  bonus numeric(14,2) not null default 0 check (bonus >= 0),
+  deduction numeric(14,2) not null default 0 check (deduction >= 0),
+  net numeric(14,2) not null check (net >= 0),
+  transaction_id uuid not null references public.transactions(id),
+  paid_at timestamptz not null default now(),
+  unique (salary_id, period)                       -- no double-paying a period
+);
+
+alter table public.salary_payments enable row level security;
+
+drop policy if exists salary_payments_select on public.salary_payments;
+create policy salary_payments_select on public.salary_payments for select
+  using (public.is_family_owner(family_id) or profile_id = auth.uid());
+
+-- Budgets: monthly or annual; family-wide, per apartment, or per member.
+alter table public.budgets add column if not exists period text not null default 'monthly'
+  check (period in ('monthly','annual'));
+
+alter table public.budgets add column if not exists scope text not null default 'family'
+  check (scope in ('family','apartment','member'));
+
+alter table public.budgets add column if not exists scope_id uuid;
+
+  -- apartments.id or profiles.id
+
+-- ---------------------------------------------------------------------------
+-- record_income: credit an account atomically.
+-- ---------------------------------------------------------------------------
+create or replace function public.record_income(
+  p_account_id uuid, p_amount numeric, p_category text, p_description text default ''
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_acc public.accounts%rowtype;
+  v_tx uuid;
+begin
+  if p_amount is null or p_amount <= 0 then raise exception 'amount must be positive'; end if;
+  select * into v_acc from public.accounts where id = p_account_id for update;
+  if not found then raise exception 'account not found'; end if;
+  if not public.is_family_member(v_acc.family_id) or not public.has_permission('finance.manage') then
+    raise exception 'not allowed';
+  end if;
+  update public.accounts set balance = balance + p_amount where id = p_account_id;
+  insert into public.transactions
+    (family_id, account_id, type, amount, category, description, created_by)
+  values
+    (v_acc.family_id, p_account_id, 'income', p_amount, p_category, p_description, auth.uid())
+  returning id into v_tx;
+  insert into public.audit_logs (family_id, actor_id, action, entity, entity_id, metadata)
+  values (v_acc.family_id, auth.uid(), 'finance.income', 'transactions', v_tx::text,
+          jsonb_build_object('account', p_account_id, 'amount', p_amount));
+  return v_tx;
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- record_expense: debit an account atomically; fails on insufficient funds.
@@ -112,50 +204,5 @@ begin
   values (v_sal.family_id, auth.uid(), 'finance.salary_pay', 'salary_payments', v_pay::text,
           jsonb_build_object('net', v_net, 'period', p_period));
   return v_pay;
-end;
-$$;
-
--- ---------------------------------------------------------------------------
--- budget_report: planned vs actual per budget row for a given month.
--- Actual = sum of expenses in the budget's category for that month,
--- filtered by scope (family / apartment via member link / single member).
--- ---------------------------------------------------------------------------
-create or replace function public.budget_report(p_month date)
-returns table (
-  budget_id uuid, category text, scope text, scope_id uuid,
-  planned numeric, actual numeric, remaining numeric
-) language plpgsql security definer stable set search_path = public as $$
-declare
-  v_family_id uuid;
-  v_from timestamptz;
-  v_to timestamptz;
-begin
-  select family_id into v_family_id from public.profiles where id = auth.uid();
-  if v_family_id is null then return; end if;
-  v_from := p_month::timestamptz;
-  v_to := (p_month + interval '1 month')::timestamptz;
-  return query
-  select b.id, b.category, b.scope, b.scope_id, b.monthly_limit,
-    coalesce(sum(t.amount) filter (
-      where (b.scope = 'family')
-         or (b.scope = 'member' and t.member_id = b.scope_id)
-         or (b.scope = 'apartment' and t.category like 'apartment:%')
-    ), 0) as actual,
-    b.monthly_limit - coalesce(sum(t.amount) filter (
-      where (b.scope = 'family')
-         or (b.scope = 'member' and t.member_id = b.scope_id)
-         or (b.scope = 'apartment' and t.category like 'apartment:%')
-    ), 0) as remaining
-  from public.budgets b
-  left join public.transactions t
-    on t.family_id = b.family_id and t.type = 'expense'
-   and t.category = b.category
-   and t.created_at >= case when b.period = 'annual'
-                            then date_trunc('year', p_month)::timestamptz else v_from end
-   and t.created_at <  case when b.period = 'annual'
-                            then (date_trunc('year', p_month) + interval '1 year')::timestamptz else v_to end
-  where b.family_id = v_family_id and b.month = p_month
-  group by b.id
-  order by b.category;
 end;
 $$;

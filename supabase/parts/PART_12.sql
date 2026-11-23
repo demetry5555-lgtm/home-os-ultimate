@@ -1,4 +1,4 @@
--- HOME OS PART 12 OF 12 (grants repair + family goals + daily check-ins).
+-- HOME OS PART 12 OF 13 (grants repair + family goals + daily check-ins).
 -- Mirrors the hosted setup page exactly. Hardened: safe to re-run.
 
 -- HOME OS ULTIMATE - PART 12: permissions repair + goals & check-ins.

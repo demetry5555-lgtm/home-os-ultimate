@@ -1,4 +1,4 @@
--- HOME OS PART 1 OF 10 (part 9B is the repair for part 9)
+-- HOME OS PART 1 OF 11 (part 9B is the repair for part 9; part 11 fixes invitation codes)
 -- Mirrors the hosted setup page exactly. Hardened: safe to re-run any part.
 
 -- HOME OS PART 1 OF 9
@@ -7,7 +7,7 @@
 -- PostgreSQL / Supabase. All access enforced server-side via RLS.
 -- ============================================================================
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ---------------------------------------------------------------------------
 -- Enumerated lookup: permissions catalog + role -> permission grants

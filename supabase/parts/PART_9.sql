@@ -1,4 +1,4 @@
--- HOME OS PART 9 OF 10 (part 9B is the repair for part 9)
+-- HOME OS PART 9 OF 11 (part 9B is the repair for part 9; part 11 fixes invitation codes)
 -- Mirrors the hosted setup page exactly. Hardened: safe to re-run any part.
 
 -- HOME OS PART 9 OF 9
@@ -140,7 +140,7 @@ declare
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_inv from public.invitations
-  where code_hash = encode(digest(upper(trim(p_code)), 'sha256'), 'hex')
+  where code_hash = encode(extensions.digest(upper(trim(p_code)), 'sha256'), 'hex')
   for update;
   if not found then raise exception 'invalid invitation code'; end if;
   if v_inv.status = 'pending' and v_inv.expires_at < now() then

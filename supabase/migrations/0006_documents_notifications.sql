@@ -128,7 +128,7 @@ declare
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   select * into v_inv from public.invitations
-  where code_hash = encode(digest(upper(trim(p_code)), 'sha256'), 'hex')
+  where code_hash = encode(extensions.digest(upper(trim(p_code)), 'sha256'), 'hex')
   for update;
   if not found then raise exception 'invalid invitation code'; end if;
   if v_inv.status = 'pending' and v_inv.expires_at < now() then

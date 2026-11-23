@@ -3,7 +3,7 @@
 -- PostgreSQL / Supabase. All access enforced server-side via RLS.
 -- ============================================================================
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ---------------------------------------------------------------------------
 -- Enumerated lookup: permissions catalog + role -> permission grants
@@ -377,12 +377,12 @@ begin
     raise exception 'only an active owner can create invitations';
   end if;
   v_code := 'HOME-' ||
-            upper(substr(encode(gen_random_bytes(4), 'hex'), 1, 4)) || '-' ||
-            upper(substr(encode(gen_random_bytes(4), 'hex'), 1, 4));
+            upper(substr(encode(extensions.gen_random_bytes(4), 'hex'), 1, 4)) || '-' ||
+            upper(substr(encode(extensions.gen_random_bytes(4), 'hex'), 1, 4));
   insert into public.invitations
     (family_id, code_hash, code_hint, intended_name, created_by)
   values
-    (v_family_id, encode(digest(v_code, 'sha256'), 'hex'),
+    (v_family_id, encode(extensions.digest(v_code, 'sha256'), 'hex'),
      right(v_code, 4), p_intended_name, auth.uid());
   insert into public.audit_logs (family_id, actor_id, action, entity, metadata)
   values (v_family_id, auth.uid(), 'invitation.create', 'invitations',
@@ -405,7 +405,7 @@ begin
     raise exception 'profile already exists';
   end if;
   select * into v_inv from public.invitations
-  where code_hash = encode(digest(upper(trim(p_code)), 'sha256'), 'hex')
+  where code_hash = encode(extensions.digest(upper(trim(p_code)), 'sha256'), 'hex')
   for update;                                    -- lock the row: single-use
   if not found then
     raise exception 'invalid invitation code';

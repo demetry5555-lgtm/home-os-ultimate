@@ -1,4 +1,4 @@
--- HOME OS PART 10 OF 10 (part 9B is the repair for part 9)
+-- HOME OS PART 10 OF 11 (part 9B is the repair for part 9; part 11 fixes invitation codes)
 -- Mirrors the hosted setup page exactly. Hardened: safe to re-run any part.
 
 -- ===========================================================================
@@ -106,8 +106,3 @@ begin
   return v_tx;
 end;
 $$;
-
-select 'HOME OS ULTIMATE: database ready ✅' as status,
-       (select count(*) from pg_tables where schemaname = 'public') as tables,
-       (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname = 'public') as functions;

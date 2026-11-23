@@ -4,18 +4,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        obsidian: '#08090D',
-        surface: '#12141B',
-        gold: { DEFAULT: '#D6B56D', soft: '#F1DDAA', electric: '#FFD36A' },
-        ivory: '#F8F6F0',
-        muted: '#A8A8AD',
+        obsidian: '#0B0F1E',
+        surface: '#141B33',
+        gold: { DEFAULT: '#E0C184', soft: '#F6E7C1', electric: '#FFDD8F' },
+        ivory: '#F7F5EF',
+        muted: '#9BA3B4',
       },
       fontFamily: {
         display: ['"Cairo"', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        glass: '0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(241,221,170,0.08)',
-        goldglow: '0 0 24px rgba(255,211,106,0.35)',
+        glass: '0 18px 50px rgba(2,6,23,0.55), inset 0 1px 0 rgba(255,255,255,0.12)',
+        goldglow: '0 0 28px rgba(255,221,143,0.35)',
       },
     },
   },

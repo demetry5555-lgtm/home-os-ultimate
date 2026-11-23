@@ -3,13 +3,13 @@
 @tailwind utilities;
 
 :root {
-  --bg: #08090D;
-  --surface: #12141B;
-  --gold: #D6B56D;
-  --gold-soft: #F1DDAA;
-  --gold-electric: #FFD36A;
-  --ivory: #F8F6F0;
-  --muted: #A8A8AD;
+  --bg: #0B0F1E;
+  --surface: #141B33;
+  --gold: #E0C184;
+  --gold-soft: #F6E7C1;
+  --gold-electric: #FFDD8F;
+  --ivory: #F7F5EF;
+  --muted: #9BA3B4;
 }
 
 html, body, #root { height: 100%; }
@@ -17,19 +17,21 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ivory);
-  font-family: 'Cairo', system-ui, sans-serif;
+  font-family: 'Cairo', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Electric gold veins drifting across the background */
+/* Aurora glass background: deep navy/indigo with drifting champagne rays */
 .electric-bg {
   position: fixed;
   inset: 0;
   overflow: hidden;
   background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(214,181,109,0.12), transparent 60%),
-    radial-gradient(900px 500px at 10% 110%, rgba(255,211,106,0.08), transparent 60%),
-    var(--bg);
+    radial-gradient(1100px 700px at 85% -15%, rgba(88, 101, 242, 0.22), transparent 62%),
+    radial-gradient(900px 600px at -10% 100%, rgba(224, 193, 132, 0.10), transparent 60%),
+    radial-gradient(700px 500px at 50% 55%, rgba(56, 80, 180, 0.10), transparent 65%),
+    linear-gradient(180deg, #0B0F1E 0%, #0D1226 55%, #0A0D1B 100%);
 }
 .electric-bg::before,
 .electric-bg::after {
@@ -37,10 +39,10 @@ body {
   position: absolute;
   inset: -40%;
   background:
-    linear-gradient(115deg, transparent 48.6%, rgba(255,211,106,0.20) 49%, rgba(214,181,109,0.05) 50%, transparent 50.6%),
-    linear-gradient(65deg,  transparent 62%,   rgba(241,221,170,0.14) 62.4%, transparent 63%),
-    linear-gradient(150deg, transparent 30%,   rgba(255,211,106,0.10) 30.3%, transparent 30.8%);
-  filter: drop-shadow(0 0 6px rgba(255,211,106,0.35));
+    linear-gradient(115deg, transparent 48.6%, rgba(255, 221, 143, 0.16) 49%, rgba(224, 193, 132, 0.05) 50%, transparent 50.6%),
+    linear-gradient(65deg,  transparent 62%,   rgba(246, 231, 193, 0.10) 62.4%, transparent 63%),
+    linear-gradient(150deg, transparent 30%,   rgba(140, 160, 255, 0.10) 30.3%, transparent 30.8%);
+  filter: drop-shadow(0 0 8px rgba(255, 221, 143, 0.28));
   animation: veinDrift 26s linear infinite;
   pointer-events: none;
 }
@@ -56,35 +58,66 @@ body {
 }
 
 @layer components {
+  /* iOS frosted glass surfaces */
   .glass {
-    @apply bg-surface/60 backdrop-blur-xl border border-gold/15 rounded-3xl shadow-glass;
+    @apply rounded-[28px] border border-white/10;
+    background: linear-gradient(160deg, rgba(255,255,255,0.10), rgba(255,255,255,0.045) 55%, rgba(255,255,255,0.02));
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    box-shadow:
+      0 18px 50px rgba(2, 6, 23, 0.55),
+      0 2px 8px rgba(2, 6, 23, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12);
   }
   .glass-inner {
-    @apply bg-white/[0.03] border border-white/[0.06] rounded-2xl;
+    @apply rounded-[20px] border border-white/[0.07];
+    background: rgba(255, 255, 255, 0.045);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
   .gold-text {
-    background: linear-gradient(120deg, #F1DDAA, #FFD36A 45%, #D6B56D);
+    background: linear-gradient(110deg, #F6E7C1 20%, #FFDD8F 38%, #E0C184 52%, #F6E7C1 68%);
+    background-size: 220% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+    animation: goldShimmer 5.5s ease-in-out infinite;
   }
   .btn-gold {
-    @apply relative overflow-hidden rounded-2xl px-5 py-3 font-bold text-obsidian transition
-      active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none;
-    background: linear-gradient(120deg, #F1DDAA, #FFD36A 55%, #D6B56D);
-    box-shadow: 0 4px 24px rgba(255,211,106,0.25);
+    @apply relative overflow-hidden rounded-[18px] px-5 py-3 font-bold transition-all duration-200
+      active:scale-[0.96] disabled:opacity-40 disabled:pointer-events-none;
+    color: #1A1408;
+    background: linear-gradient(135deg, #F6E7C1, #FFDD8F 45%, #D9B877);
+    box-shadow:
+      0 8px 28px rgba(255, 221, 143, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      inset 0 -1px 0 rgba(120, 90, 30, 0.25);
   }
-  .btn-gold:hover { box-shadow: 0 6px 32px rgba(255,211,106,0.45); }
+  .btn-gold:hover {
+    box-shadow:
+      0 10px 36px rgba(255, 221, 143, 0.42),
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      inset 0 -1px 0 rgba(120, 90, 30, 0.25);
+  }
   .btn-ghost {
-    @apply rounded-2xl px-5 py-3 font-semibold text-gold-soft border border-gold/25
-      hover:border-gold/60 hover:bg-gold/5 transition active:scale-[0.98];
+    @apply rounded-[18px] px-5 py-3 font-semibold text-gold-soft border border-white/15
+      hover:border-gold/50 hover:bg-white/5 transition-all duration-200 active:scale-[0.96];
+    background: rgba(255, 255, 255, 0.04);
   }
   .input-glass {
-    @apply w-full rounded-2xl bg-white/[0.04] border border-white/10 px-4 py-3 text-ivory
-      placeholder:text-muted/60 outline-none transition
-      focus:border-gold-electric/60 focus:ring-2 focus:ring-gold-electric/20;
+    @apply w-full rounded-[16px] bg-white/[0.05] border border-white/10 px-4 py-3 text-ivory
+      placeholder:text-muted/60 outline-none transition-all duration-200
+      focus:border-gold-electric/50 focus:ring-4 focus:ring-gold-electric/15 focus:bg-white/[0.07];
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
   .label-glass { @apply block text-sm font-semibold text-muted mb-1.5; }
+}
+
+/* iOS spring easing */
+.spring { transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+
+@keyframes goldShimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
 }
 
 /* Splash veil */
@@ -95,9 +128,37 @@ body {
   0%, 100% { opacity: 0.85; transform: scale(1); }
   50%      { opacity: 1;    transform: scale(1.04); }
 }
-.fade-in { animation: fadeIn 0.5s ease both; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.fade-in { animation: fadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* Drawer spring-in, direction aware */
+.drawer-panel { animation: drawerInL 0.34s cubic-bezier(0.22, 1, 0.36, 1) both; }
+[dir='rtl'] .drawer-panel { animation-name: drawerInR; }
+@keyframes drawerInL { from { transform: translateX(-28px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@keyframes drawerInR { from { transform: translateX(28px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+.drawer-veil { animation: veilIn 0.28s ease both; }
+@keyframes veilIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Skeleton shimmer for loading states */
+.skeleton {
+  @apply rounded-[14px];
+  background: linear-gradient(100deg, rgba(255,255,255,0.05) 35%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.05) 65%);
+  background-size: 220% 100%;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeletonShimmer {
+  from { background-position: 120% 0; }
+  to   { background-position: -120% 0; }
+}
+
+/* Satisfying tap feedback on tappable rows/cards */
+.tappable { @apply transition-all duration-150 active:scale-[0.98]; }
 
 /* direction-aware back arrow */
 .back-arrow { display: inline-block; }
 [dir='rtl'] .back-arrow { transform: scaleX(-1); }
+
+/* Slim elegant scrollbars */
+* { scrollbar-width: thin; scrollbar-color: rgba(224,193,132,0.25) transparent; }
+*::-webkit-scrollbar { width: 5px; height: 5px; }
+*::-webkit-scrollbar-thumb { background: rgba(224,193,132,0.22); border-radius: 99px; }

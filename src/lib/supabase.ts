@@ -7,5 +7,13 @@ const forceDemo = import.meta.env.VITE_DEMO_MODE === '1'
 export const isCloud = Boolean(url && anon && !url.includes('YOUR-PROJECT') && !forceDemo)
 
 export const supabase: SupabaseClient | null = isCloud
-  ? createClient(url!, anon!)
+  ? createClient(url!, anon!, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: 'homeos.auth',
+        storage: window.localStorage,
+      },
+    })
   : null

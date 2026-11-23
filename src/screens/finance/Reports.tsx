@@ -61,14 +61,14 @@ export default function Reports() {
     if (!apt) return
     const lines = [apt.total, ...apt.lines]
     downloadTextFile(`homeos-apartment-budget.csv`, toCsv(
-      ['Room', 'Planned', 'Actual', 'Remaining'],
+      [t('room'), t('planned'), t('actual'), t('remaining')],
       lines.map(l => [l.label, formatAmount(l.plannedCents), formatAmount(l.actualCents), formatAmount(l.plannedCents - l.actualCents)]),
     ))
   }
 
   function exportTasksCsv() {
     downloadTextFile(`homeos-task-stats.csv`, toCsv(
-      ['Member', 'Assigned', 'Completed', 'Open', 'Overdue', 'Avg rating'],
+      [t('member'), t('assigned'), t('completedCount'), t('openCount'), t('overdue'), t('avgRating')],
       stats.map(s => [s.name, s.assigned, s.completed, s.open, s.overdue, s.avgRating?.toFixed(1) ?? '']),
     ))
   }

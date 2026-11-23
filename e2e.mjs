@@ -50,7 +50,8 @@ check('invitation code generated HOME-XXXX-XXXX', /^HOME-[A-Z0-9]{4}-[A-Z0-9]{4}
 console.log('generated code:', code)
 
 // --- 4. Sign out, join as member with the code ---
-await page.$$eval('nav button', b => b[b.length - 1].click()) // sign out
+await page.click('button[aria-label="القايمة"]'); await sleep(350)
+await page.$$eval('button', bs => bs.find(b => b.textContent.includes('تسجيل الخروج')).click()) // sign out via drawer
 await sleep(600)
 await page.goto(BASE + '#/join', { waitUntil: 'networkidle0' })
 await sleep(500)
@@ -68,7 +69,8 @@ const memberBody = await page.evaluate(() => document.body.innerText)
 check('member sees profile nav (is inside app)', memberBody.length > 0)
 
 // --- 6. Owner signs back in, sees accepted, suspends member ---
-await page.$$eval('nav button', b => b[b.length - 1].click())
+await page.click('button[aria-label="القايمة"]'); await sleep(350)
+await page.$$eval('button', bs => bs.find(b => b.textContent.includes('تسجيل الخروج')).click())
 await sleep(600)
 await page.goto(BASE + '#/login', { waitUntil: 'networkidle0' })
 await sleep(400)
@@ -94,7 +96,8 @@ await sleep(600)
 check('owner suspended the member', suspended)
 
 // --- 7. Suspended member cannot sign in ---
-await page.$$eval('nav button', b => b[b.length - 1].click())
+await page.click('button[aria-label="القايمة"]'); await sleep(350)
+await page.$$eval('button', bs => bs.find(b => b.textContent.includes('تسجيل الخروج')).click())
 await sleep(600)
 await page.goto(BASE + '#/login', { waitUntil: 'networkidle0' })
 await sleep(400)

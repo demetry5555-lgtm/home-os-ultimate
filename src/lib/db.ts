@@ -171,13 +171,29 @@ export async function getSession(): Promise<SessionInfo | null> {
 
 export async function getMyProfile(): Promise<Profile | null> {
   if (isCloud && supabase) {
-    const { data, error } = await supabase.from('profiles').select('*').single()
-    if (error) return null
-    return data as Profile
+    try {
+      return await getMyProfileStrict()
+    } catch {
+      return null
+    }
   }
   const s = load()
   if (!s.session) return null
   return s.profiles.find(p => p.id === s.session!.userId) ?? null
+}
+
+// Own profile only. Throws on fetch error so callers can tell "no profile yet"
+// apart from "could not read" - never route to onboarding on an error.
+export async function getMyProfileStrict(): Promise<Profile | null> {
+  if (isCloud && supabase) {
+    const { data: auth } = await supabase.auth.getUser()
+    const uid = auth.user?.id
+    if (!uid) return null
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle()
+    if (error) throw new Error(error.message)
+    return (data as Profile) ?? null
+  }
+  return getMyProfile()
 }
 
 export async function bootstrapOwner(ownerName: string, familyName: string): Promise<void> {

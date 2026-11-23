@@ -23,14 +23,15 @@ export function Field({ label, ...props }: InputHTMLAttributes<HTMLInputElement>
   )
 }
 
-export function Logo({ size = 'md' }: { size?: 'md' | 'lg' }) {
-  const { t } = useT()
+export function Logo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
+  const { t, lang } = useT()
+  const ar = lang === 'ar' // Arabic script must not be letter-spaced; Latin brand keeps the wide tracking
   return (
-    <div className="text-center select-none">
-      <div className={`font-black tracking-[0.35em] gold-text ${size === 'lg' ? 'text-4xl' : 'text-2xl'}`}>
+    <div className="text-center select-none whitespace-nowrap">
+      <div className={`font-black gold-text ${ar ? 'tracking-normal' : 'tracking-[0.35em]'} ${size === 'lg' ? 'text-4xl' : size === 'sm' ? 'text-lg' : 'text-2xl'}`}>
         {t('appName')}
       </div>
-      <div className={`tracking-[0.6em] text-gold/70 font-semibold ${size === 'lg' ? 'text-sm mt-1' : 'text-[10px] mt-0.5'}`}>
+      <div className={`${ar ? 'tracking-normal' : 'tracking-[0.6em]'} text-gold/70 font-semibold ${size === 'lg' ? 'text-sm mt-1' : size === 'sm' ? 'text-[9px] mt-0' : 'text-[10px] mt-0.5'}`}>
         {t('ultimate')}
       </div>
     </div>

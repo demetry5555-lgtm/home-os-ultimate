@@ -145,7 +145,7 @@ await fillForm(['سارة'])
 await clickButton('إنشاء')
 await sleep(700)
 const code = await page.evaluate(() => document.querySelector('p[dir="ltr"].font-mono')?.textContent?.trim())
-await clickButton('تسجيل الخروج')
+await page.click('button[aria-label="القايمة"]'); await sleep(350); await clickButton('تسجيل الخروج')
 await sleep(600)
 await go('#/join')
 let ji = await page.$$('input')
@@ -158,7 +158,7 @@ check('member joined', page.url().includes('#/home'))
 await go('#/home/finance/accounts')
 txt = await bodyText()
 check('member sees accounts read-only (no create form)', txt.includes('الخزنة') && !txt.includes('حساب جديد'))
-await clickButton('تسجيل الخروج')
+await page.click('button[aria-label="القايمة"]'); await sleep(350); await clickButton('تسجيل الخروج')
 await sleep(600)
 
 // back as owner
@@ -229,7 +229,7 @@ await clickButton('تعيين مشرف')
 await sleep(700)
 txt = await bodyText()
 check('سارة promoted to supervisor', txt.includes('مشرف'))
-await clickButton('تسجيل الخروج')
+await page.click('button[aria-label="القايمة"]'); await sleep(350); await clickButton('تسجيل الخروج')
 await sleep(600)
 
 // supervisor signs in: can add expense, cannot add accounts
@@ -253,7 +253,7 @@ check('supervisor expense recorded', txt.includes('مصروف من المشرف�
 await go('#/home/finance/accounts')
 txt = await bodyText()
 check('supervisor cannot add accounts (owner only)', !txt.includes('حساب جديد') && txt.includes('الخزنة'))
-await clickButton('تسجيل الخروج')
+await page.click('button[aria-label="القايمة"]'); await sleep(350); await clickButton('تسجيل الخروج')
 await sleep(600)
 
 // back as owner: supervisor expense rolls into owner totals

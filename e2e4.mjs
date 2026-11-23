@@ -23,7 +23,7 @@ async function signIn(email, pass) {
   await clickButton('Sign in')
   await sleep(900)
 }
-async function signOut() { await clickButton('Sign out'); await sleep(700) }
+async function signOut() { await page.click('button[aria-label="Menu"]'); await sleep(350); await clickButton('Sign out'); await sleep(700) }
 async function selectByText(nth, text) {
   return page.$$eval('form select', (ss, n, txt) => {
     const s = ss[n]; if (!s) return false
@@ -59,7 +59,7 @@ let fi = await page.$$('input:not([type=email]):not([type=password])')
 await fi[0].type('Abdullah'); await fi[1].type('Abdullah Family')
 await clickButton('Start your family')
 await sleep(900)
-check('owner bootstrap lands on dashboard', (await bodyText()).includes('Dashboard'))
+check('owner bootstrap lands on dashboard', await page.evaluate(() => location.hash === '#/home' || location.hash === '#/home/'))
 
 // --- account + funds ---
 await go('#/home/finance/accounts')

@@ -23,7 +23,7 @@ async function signIn(email, pass) {
   await clickButton('تسجيل الدخول')
   await sleep(900)
 }
-async function signOut() { await clickButton('تسجيل الخروج'); await sleep(600) }
+async function signOut() { await page.click('button[aria-label="القايمة"]'); await sleep(350); await clickButton('تسجيل الخروج'); await sleep(600) }
 
 await go('#/')
 await page.evaluate(() => localStorage.clear())

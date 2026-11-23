@@ -19,6 +19,11 @@ export default function OwnerSetup() {
       await bootstrapOwner(name.trim(), family.trim())
       navigate('/home', { replace: true })
     } catch (err) {
+      // Profile already exists (e.g. signed up earlier): go straight home.
+      if (err instanceof Error && err.message.toLowerCase().includes('already exists')) {
+        navigate('/home', { replace: true })
+        return
+      }
       setError(err instanceof Error ? err.message : 'error')
     } finally { setBusy(false) }
   }

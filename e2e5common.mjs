@@ -28,7 +28,7 @@ export function makeHelpers(page) {
     await clickButton('Sign in')
     await sleep(800)
   }
-  const signOut = async () => { await clickButton('Sign out'); await sleep(600) }
+  const signOut = async () => { await page.click('button[aria-label="Menu"]'); await sleep(350); await clickButton('Sign out'); await sleep(600) }
   const selectByText = (nth, text) => page.$$eval('form select', (ss, n, txt) => {
     const s = ss[n]; if (!s) return false
     const o = [...s.options].find(o => o.textContent.includes(txt))

@@ -6,6 +6,9 @@ export interface Profile {
   id: string
   family_id: string | null
   full_name: string
+  display_name?: string | null
+  avatar_url?: string | null
+  phone?: string
   role: Role
   status: 'active' | 'suspended'
 }
@@ -618,4 +621,70 @@ export async function myCheckinStreak(): Promise<number> {
     cursor = new Date(cursor.getTime() - 864e5)
   }
   return streak
+}
+
+// ============ PROFILE EDITING (stage 8) ============
+
+export async function updateMyProfile(input: { full_name?: string; phone?: string }): Promise<void> {
+  if (isCloud && supabase) {
+    const me = await getMyProfileStrict()
+    if (!me) throw new Error('no profile')
+    const { error } = await supabase.from('profiles').update(input).eq('id', me.id)
+    if (error) throw new Error(error.message)
+    return
+  }
+  const s = load()
+  const me = s.profiles.find(p => p.id === s.session?.userId)
+  if (!me) throw new Error('not authenticated')
+  if (input.full_name !== undefined) me.full_name = input.full_name
+  if (input.phone !== undefined) (me as Profile & { phone?: string }).phone = input.phone
+  save(s)
+}
+
+// Compress to a 256px square JPEG before upload (fast on mobile, small in storage).
+async function compressAvatar(file: File): Promise<Blob> {
+  const bmp = await createImageBitmap(file)
+  const size = Math.min(bmp.width, bmp.height)
+  const canvas = document.createElement('canvas')
+  canvas.width = 256; canvas.height = 256
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(bmp, (bmp.width - size) / 2, (bmp.height - size) / 2, size, size, 0, 0, 256, 256)
+  return await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(b => (b ? resolve(b) : reject(new Error('compress failed'))), 'image/jpeg', 0.85))
+}
+
+export async function uploadMyAvatar(file: File): Promise<void> {
+  const blob = await compressAvatar(file)
+  const me = await getMyProfileStrict()
+  if (!me) throw new Error('no profile')
+  if (isCloud && supabase) {
+    const path = `${me.id}/avatar.jpg`
+    const { error } = await supabase.storage.from('homeos-avatars').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
+    if (error) throw new Error(error.message)
+    const { error: e2 } = await supabase.from('profiles').update({ avatar_url: path }).eq('id', me.id)
+    if (e2) throw new Error(e2.message)
+    return
+  }
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(r.result as string)
+    r.onerror = () => reject(new Error('read failed'))
+    r.readAsDataURL(blob)
+  })
+  const s = load()
+  const p = s.profiles.find(x => x.id === me.id)
+  if (p) p.avatar_url = dataUrl
+  save(s)
+}
+
+// Renderable URL for an avatar reference: signed URL in cloud, data URL in demo.
+export async function avatarDisplayUrl(avatar: string | null | undefined): Promise<string | null> {
+  if (!avatar) return null
+  if (avatar.startsWith('data:') || avatar.startsWith('http')) return avatar
+  if (isCloud && supabase) {
+    const { data, error } = await supabase.storage.from('homeos-avatars').createSignedUrl(avatar, 3600)
+    if (error) return null
+    return data.signedUrl
+  }
+  return null
 }

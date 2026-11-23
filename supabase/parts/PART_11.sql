@@ -1,4 +1,4 @@
--- HOME OS PART 11 OF 11 (part 9B is the repair for part 9; part 11 fixes invitation codes)
+-- HOME OS PART 11 OF 12 (part 9B is the repair for part 9; part 11 fixes invitation codes)
 -- Mirrors the hosted setup page exactly. Hardened: safe to re-run any part.
 
 -- HOME OS ULTIMATE - PART 11 (fix): invitation codes.
